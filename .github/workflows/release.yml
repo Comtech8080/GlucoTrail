@@ -1,0 +1,80 @@
+name: Signed GlucoTrail release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to build (must match versionName)
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate tag input
+        shell: bash
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid version tag'; exit 1; }
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - run: sdkmanager 'platforms;android-36' 'build-tools;35.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Require existing app signing credentials
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GLUCOTRAIL_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.GLUCOTRAIL_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.GLUCOTRAIL_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.GLUCOTRAIL_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Signing credentials missing. Follow docs/RELEASING.md; use the existing installed app's signing key. No replacement key is generated."
+              exit 1
+            fi
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/glucotrail.jks"
+          chmod 600 "$RUNNER_TEMP/glucotrail.jks"
+      - name: Test and build signed APK
+        env:
+          GLUCOTRAIL_KEYSTORE: ${{ runner.temp }}/glucotrail.jks
+          GLUCOTRAIL_STORE_PASSWORD: ${{ secrets.GLUCOTRAIL_STORE_PASSWORD }}
+          GLUCOTRAIL_KEY_ALIAS: ${{ secrets.GLUCOTRAIL_KEY_ALIAS }}
+          GLUCOTRAIL_KEY_PASSWORD: ${{ secrets.GLUCOTRAIL_KEY_PASSWORD }}
+        run: sh ./gradlew testDebugUnitTest lintRelease assembleRelease
+      - name: Verify and package release assets
+        shell: bash
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
+          python3 tools/package_release.py "$RELEASE_TAG"
+      - name: Publish complete assets as a draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # Refuse to replace assets in an existing release.
+          args=("$RELEASE_TAG" --verify-tag --draft --title "GlucoTrail $RELEASE_TAG" --generate-notes)
+          if [[ "$RELEASE_TAG" == *-* ]]; then args+=(--prerelease); fi
+          gh release create "${args[@]}" dist/*
+      - name: Remove temporary signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/glucotrail.jks"
