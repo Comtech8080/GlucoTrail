@@ -1,5 +1,8 @@
 # GlucoTrail
 
+> [!IMPORTANT]
+> **Sensor compatibility:** GlucoTrail currently works only with the **AiDEX X CGM sensor**. Other CGM sensors, including **FreeStyle Libre** and **Dexcom**, are not currently supported.
+
 Android glucose reader and personal tracking app. Source imported from the existing
 GlucoTrail 0.1.60.19 project; 0.1.60.20 adds Settings → App Updates.
 
