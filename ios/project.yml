@@ -1,0 +1,34 @@
+name: GlucoTrail
+options:
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: 1
+packages:
+  GlucoTrailProtocol:
+    path: .
+targets:
+  GlucoTrail:
+    type: application
+    platform: iOS
+    sources: [App]
+    dependencies:
+      - package: GlucoTrailProtocol
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.glucotrail.ios
+        TARGETED_DEVICE_FAMILY: '1'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: GlucoTrail
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: GlucoTrail uses Bluetooth to discover your glucose sensor and test reception of its readings.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+schemes:
+  GlucoTrail:
+    build:
+      targets:
+        GlucoTrail: all

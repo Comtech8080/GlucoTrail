@@ -1,0 +1,39 @@
+name: iOS prototype validation
+on:
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  push:
+    branches: [main]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test protocol against Android reference vectors
+        working-directory: ios
+        run: swift test
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build iPhone Simulator app without signing credentials
+        working-directory: ios
+        run: >-
+          xcodebuild -project GlucoTrail.xcodeproj -scheme GlucoTrail
+          -configuration Debug -sdk iphonesimulator
+          -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+      - name: Archive simulator app
+        working-directory: ios
+        run: ditto -c -k --sequesterRsrc --keepParent build/Build/Products/Debug-iphonesimulator/GlucoTrail.app GlucoTrail-Simulator.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GlucoTrail-iOS-Simulator
+          path: ios/GlucoTrail-Simulator.zip
+          retention-days: 14

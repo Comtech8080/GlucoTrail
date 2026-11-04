@@ -1,5 +1,9 @@
 # GlucoTrail
 
+The [iPhone sensor prototype](ios/README.md) lives in `ios/` and has its own macOS
+CI build. It is an initial foreground Bluetooth reception test, not yet a full iOS
+version or a TestFlight release.
+
 Android glucose reader and personal tracking app. Source imported from the existing
 GlucoTrail 0.1.60.19 project; 0.1.60.20 adds Settings → App Updates.
 
