@@ -119,6 +119,26 @@ object AidexBackgroundScanManager {
                 )
                 .build()
 
+        // An optional replacement sensor is passively observed while the
+        // selected primary retains responsibility for glucose alarms.
+        val preferences = appContext.getSharedPreferences(
+            "aidexx_reader",
+            Context.MODE_PRIVATE
+        )
+        val replacementAddress = preferences
+            .getString("replacement_sensor_address", null)
+            ?.trim()
+            ?.uppercase()
+            ?.takeIf { BluetoothAdapter.checkBluetoothAddress(it) }
+            ?.takeUnless { it == address }
+
+        val filters = buildList {
+            add(filter)
+            replacementAddress?.let {
+                add(ScanFilter.Builder().setDeviceAddress(it).build())
+            }
+        }
+
         val settings =
             ScanSettings
                 .Builder()
@@ -143,9 +163,7 @@ object AidexBackgroundScanManager {
         val result =
             runCatching {
                 scanner.startScan(
-                    listOf(
-                        filter
-                    ),
+                    filters,
                     settings,
                     pendingIntent
                 )
