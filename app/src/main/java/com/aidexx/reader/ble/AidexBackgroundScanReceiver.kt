@@ -109,6 +109,18 @@ class AidexBackgroundScanReceiver :
                 ?.uppercase()
                 ?: return
 
+        // Independently identify replacement packets by their BLE address.
+        // Never evaluate secondary readings as primary glucose alarms.
+        val replacementSerial = prefs.getString("replacement_sensor_serial", null)
+            ?.trim()?.uppercase()
+        val replacementAddress = prefs.getString("replacement_sensor_address", null)
+            ?.trim()?.uppercase()
+        val replacementConfigured =
+            !replacementSerial.isNullOrBlank() &&
+                !replacementAddress.isNullOrBlank() &&
+                replacementSerial != selectedSerial &&
+                replacementAddress != expectedAddress
+
         val database =
             AidexHistoryDatabase(
                 context
@@ -136,30 +148,34 @@ class AidexBackgroundScanReceiver :
                         ?.uppercase()
                         ?: return@forEach
 
-                if (
-                    address !=
-                    expectedAddress
-                ) {
+                val isPrimary = address == expectedAddress
+                val isReplacement =
+                    replacementConfigured && address == replacementAddress
+                if (!isPrimary && !isReplacement) {
                     return@forEach
                 }
-
+                val matchedSerial =
+                    if (isPrimary) selectedSerial else replacementSerial!!
                 val reading =
                     newestReading(
                         serial =
-                            selectedSerial,
+                            matchedSerial,
                         result =
                             result
                     )
                         ?: return@forEach
 
+                val matchedSavedSensor =
+                    if (isPrimary) savedSensor else database.loadSavedSensors()
+                        .firstOrNull { it.serial.equals(matchedSerial, ignoreCase = true) }
                 val sensor =
                     AidexSensor(
                         name =
-                            savedSensor
+                            matchedSavedSensor
                                 ?.name
-                                ?: "AiDEX X-$selectedSerial",
+                                ?: "AiDEX X-$matchedSerial",
                         serial =
-                            selectedSerial,
+                            matchedSerial,
                         address =
                             address,
                         rssi =
@@ -171,6 +187,12 @@ class AidexBackgroundScanReceiver :
                 database.saveSensor(
                     sensor
                 )
+
+                if (!isPrimary) {
+                    // The new sensor's packets are kept as distinct history;
+                    // alarms and monitoring status still belong to the old one.
+                    return@forEach
+                }
 
                 ContinuousMonitoringStatus
                     .markBackgroundPacket(
