@@ -146,6 +146,7 @@ private enum class Screen {
     START,
     DIAGNOSTICS,
     SETTINGS_SENSOR,
+    DUAL_SENSOR,
     SETTINGS_GLUCOSE,
     SETTINGS_FITNESS,
     SETTINGS_INSULIN,
@@ -174,6 +175,7 @@ private fun AidexApp(vm: AidexViewModel) {
     var activationRepairMode by remember {
         mutableStateOf(false)
     }
+    var replacementActivationMode by remember { mutableStateOf(false) }
 
     val permissions = rememberBluetoothPermissions()
     val notificationPermission = rememberNotificationPermission()
@@ -333,6 +335,7 @@ private fun AidexApp(vm: AidexViewModel) {
                 Screen.DASHBOARD,
                 Screen.NOTES,
                 Screen.SETTINGS_SENSOR,
+                Screen.DUAL_SENSOR,
                 Screen.SETTINGS_GLUCOSE,
                 Screen.SETTINGS_FITNESS,
                 Screen.SETTINGS_INSULIN,
@@ -570,6 +573,14 @@ private fun AidexApp(vm: AidexViewModel) {
 
                                 screen =
                                     Screen.SETTINGS_SENSOR
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Dual Sensor Monitoring") },
+                            onClick = {
+                                settingsExpanded = false
+                                screen = Screen.DUAL_SENSOR
                             }
                         )
 
@@ -935,6 +946,7 @@ private fun AidexApp(vm: AidexViewModel) {
                     )
 
                     Screen.START -> StartSensorScreen(
+                        replacementMode = replacementActivationMode,
                         vm =
                             vm,
                         initialSerial =
@@ -957,10 +969,18 @@ private fun AidexApp(vm: AidexViewModel) {
                         repairMode =
                             activationRepairMode,
                         onBack = {
-                            activationRepairMode =
-                                false
-                            screen =
-                                Screen.HOME
+                            activationRepairMode = false
+                            replacementActivationMode = false
+                            screen = Screen.HOME
+                        }
+                    )
+
+                    Screen.DUAL_SENSOR -> DualSensorScreen(
+                        vm = vm,
+                        onStartReplacement = {
+                            replacementActivationMode = true
+                            activationRepairMode = false
+                            screen = Screen.START
                         }
                     )
 
@@ -11491,6 +11511,7 @@ private fun SensorCard(
 @Composable
 private fun StartSensorScreen(
     vm: AidexViewModel,
+    replacementMode: Boolean = false,
     initialSerial: String? =
         null,
     initialBleAddress: String? =
@@ -11576,12 +11597,23 @@ private fun StartSensorScreen(
                     activation.serial
                 )
         ) {
-            vm.recordSensorActivation(
-                activation.serial
-            )
-            vm.selectSensor(
-                activation.serial
-            )
+            vm.recordSensorActivation(activation.serial)
+            if (replacementMode) {
+                val address = activation.address ?: selectedBleAddress
+                if (!address.isNullOrBlank()) {
+                    vm.configureReplacementSensor(
+                        AidexSensor(
+                            name = "AiDEX X-${activation.serial}",
+                            serial = activation.serial,
+                            address = address,
+                            rssi = -100,
+                            reading = null
+                        )
+                    )
+                }
+            } else {
+                vm.selectSensor(activation.serial)
+            }
             vm.cancelActivation()
             onBack()
         }
@@ -11641,7 +11673,7 @@ private fun StartSensorScreen(
                     ) {
                         "Complete Sensor Activation"
                     } else {
-                        "Start New Sensor"
+                        if (replacementMode) "Activate Replacement Sensor" else "Start New Sensor"
                     },
                     style =
                         MaterialTheme
@@ -12171,7 +12203,8 @@ private fun StartSensorScreen(
                         ) {
                             vm.activate(
                                 device,
-                                serial
+                                serial,
+                                preservePrimaryMonitoring = replacementMode
                             )
                         } else {
                             scanForExactSensor(
@@ -12181,7 +12214,8 @@ private fun StartSensorScreen(
                                     fallbackDevice ->
                                 vm.activate(
                                     fallbackDevice,
-                                    serial
+                                    serial,
+                                    preservePrimaryMonitoring = replacementMode
                                 )
                             }
                         }
@@ -12193,7 +12227,8 @@ private fun StartSensorScreen(
                                 device ->
                             vm.activate(
                                 device,
-                                serial
+                                serial,
+                                preservePrimaryMonitoring = replacementMode
                             )
                         }
                     }
