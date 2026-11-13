@@ -109,6 +109,22 @@ fun DualSensorScreen(vm: AidexViewModel, onStartReplacement: () -> Unit) {
             val newReading = next.lastOrNull { it.valid && it.crcValid && !it.isWarmup }
             Text("Old: ${oldReading?.let { units.formatGlucoseFromMgDl(it.glucoseMgDl.toDouble()) } ?: "No valid reading"}")
             Text("New: ${newReading?.let { units.formatGlucoseFromMgDl(it.glucoseMgDl.toDouble()) } ?: "No valid reading"}")
+            oldReading?.let { last ->
+                Text("Old last valid reading: ${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(last.receivedAtMs))}")
+                vm.sensorActivationStartedAt(oldSerial)?.let { started ->
+                    if (last.receivedAtMs >= started) {
+                        val runtimeMinutes = (last.receivedAtMs - started) / 60_000L
+                        val days = runtimeMinutes / 1440L
+                        val hoursRemaining = (runtimeMinutes % 1440L) / 60L
+                        Text("Observed old sensor runtime: ${days}d ${hoursRemaining}h (from recorded activation to last verified reading)")
+                        val extra = runtimeMinutes - 14L * 1440L
+                        if (extra > 0) Text("Observed past labelled 14 days: ${extra / 60L}h ${extra % 60L}m. Not validated for treatment use.")
+                    }
+                }
+            }
+            newReading?.let { last ->
+                Text("New last valid reading: ${DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(last.receivedAtMs))}")
+            }
             comparison?.let { pair ->
                 val msg = "Difference: %.1f mmol/L (%.0f%%)".format(
                     pair.differenceMmol, pair.differencePercent
