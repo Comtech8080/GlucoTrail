@@ -37,7 +37,7 @@ Synthetic fixtures are not recordings from an iPhone or proof of live sensor com
 No background capability is declared. Suspension cancels connections and invalidates the
 current-reading indicator; a duplicate packet cannot revalidate it on resume. Manufacturer
 serials are not authenticated and CoreBluetooth UUIDs are local identities, not MAC addresses.
-The persisted pair is not a pairing key. Key material and glucose records are not stored.
+The persisted pair is not a pairing key. Key material is not stored. Phase 2 persists selected-sensor glucose records locally; see README.md.
 
 ## Remaining evidence before authenticated GATT
 
@@ -47,3 +47,13 @@ CRC16 checks, and whether each Android setup command changes sensor state. Test 
 firmware, interruption at each handshake step, fresh keys per connection and replay/old
 session rejection. Do not enable activation/time/configuration commands solely because
 Android defines byte constants. Hardware tests are required separately from compilation.
+
+
+## Phase 2 presentation evidence
+
+Trend rate = `trendRaw / 10.0` mg/dL/min and arrow bands at signed 1, 2 and 3 mg/dL/min
+match `app/src/main/java/com/aidexx/reader/protocol/AidexModels.kt` at the source baseline
+above. Display uses the raw reading; no calibration or interpolation is applied.
+The database stores the CRC-validated current advertisement value only, with its phone
+receipt time. Advertised prior values are not backfilled because their wall-clock times
+have not been established. No new BLE protocol interpretation was added for Phase 2.

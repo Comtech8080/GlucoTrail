@@ -2,7 +2,7 @@ import Foundation
 
 /// The UUID belongs to this iOS installation, not the sensor's Bluetooth MAC.
 /// Advertised serials are identifiers, not cryptographic proof of ownership.
-public struct SensorIdentity: Codable, Equatable {
+public struct SensorIdentity: Codable, Equatable, Hashable {
     public let peripheralID: UUID
     public let serial: String
     public init(peripheralID: UUID, serial: String) throws {
