@@ -1,4 +1,4 @@
-name: iOS Phase 1 validation
+name: iOS validation
 on:
   pull_request:
     paths: ['ios/**', 'codemagic.yaml', '.github/workflows/ios.yml']
@@ -24,6 +24,8 @@ jobs:
         run: xcodegen generate
       - name: Build unsigned Simulator and iPhone applications
         run: bash ios/scripts/build-unsigned.sh
+      - name: Test dashboard and history on iPhone Simulator
+        run: bash ios/scripts/test-ui.sh
       - uses: actions/upload-artifact@v4
         with:
           name: GlucoTrail-iOS-Unsigned

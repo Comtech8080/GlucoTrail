@@ -23,6 +23,12 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     @Published private(set) var scanning = false
     @Published private(set) var savedIdentity: SensorIdentity?
     @Published private(set) var packetCount = 0
+    @Published private(set) var latestRecord: GlucoseRecord?
+    @Published private(set) var recordValidatedThisSession = false
+    @Published private(set) var historyRevision = 0
+    @Published private(set) var historyIdentities: [SensorIdentity] = []
+    @Published private(set) var storageError: String?
+    private var history: GlucoseHistory?
     var selectedID: UUID? { savedIdentity?.peripheralID }
     var selected: NearbySensor? { sensors.first { $0.id == selectedID } }
     private var central: CBCentralManager?
@@ -41,6 +47,31 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
         super.init()
         do { savedIdentity = try store.load() }
         catch { status = "Saved sensor identity could not be read. Select your sensor again." }
+        do {
+            var folder = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appendingPathComponent("GlucoseHistory", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.complete])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try folder.setResourceValues(values)
+            history = try GlucoseHistory(url: folder.appendingPathComponent("readings.sqlite"))
+            historyIdentities = try history!.identities()
+            restoreLatest()
+        } catch { storageError = "Local history is unavailable. Existing data was not erased. \(error)" }
+    }
+
+    func historyRecords(for identity: SensorIdentity, from start: Date, through end: Date) throws -> [GlucoseRecord] {
+        guard let history else { throw HistoryError.database("History is unavailable") }
+        return try history.records(for: identity, from: start, through: end)
+    }
+
+    private func restoreLatest() {
+        latestRecord = nil
+        recordValidatedThisSession = false
+        guard let identity = savedIdentity, let history else { return }
+        do { latestRecord = try history.latest(for: identity) }
+        catch { storageError = "Could not read saved glucose history. \(error)" }
     }
 
     func start() {
@@ -55,6 +86,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
 
     func stop() {
         requested = false
+        invalidateReadings()
         session.stop()
         timer?.invalidate()
         timer = nil
@@ -87,6 +119,8 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
         session.stop()
         cancelConnections()
         savedIdentity = identity
+        restoreLatest()
+        historyRevision += 1
         if requested { session.start(identity); tick() }
     }
 
@@ -94,6 +128,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
         stop()
         store.forget()
         savedIdentity = nil
+        latestRecord = nil
         sensors = []
         // Keep cancelling peripheral references until their callbacks drain.
         peripherals = peripherals.filter { cancelling.contains($0.key) }
@@ -101,6 +136,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     }
 
     private func invalidateReadings() {
+        recordValidatedThisSession = false
         for i in sensors.indices { sensors[i].lastPacketValid = false }
     }
 
@@ -203,6 +239,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
         let cancelled = cancelling.remove(peripheral.identifier) != nil
         if !cancelled { session.failed(peripheral.identifier, at: Date()) }
         if let i = sensors.firstIndex(where: { $0.id == peripheral.identifier }) { sensors[i].lastPacketValid = false }
+        if peripheral.identifier == selectedID { recordValidatedThisSession = false }
         tick()
     }
 
@@ -275,8 +312,28 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
                 // An old or duplicate packet cannot clear a previous invalid/stopped state.
                 if accepted { item.lastPacketValid = true }
                 item.packetStatus = accepted ? "Advertisement CRC verified · new sensor minute" : "Duplicate or older minute — age unchanged"
+                if id == selectedID, let identity = savedIdentity {
+                    do {
+                        guard let history else { throw HistoryError.database("History is unavailable") }
+                        if try history.insert(reading, identity: identity, receivedAt: now) {
+                            latestRecord = GlucoseRecord(identity: identity, reading: reading, receivedAt: now)
+                            recordValidatedThisSession = true
+                            storageError = nil
+                            historyIdentities = try history.identities()
+                            historyRevision += 1
+                            item.packetStatus = "New sensor minute saved locally"
+                        } else {
+                            item.packetStatus = "Already saved or older sensor minute — receipt time unchanged"
+                        }
+                    } catch {
+                        recordValidatedThisSession = false
+                        storageError = "Reading could not be saved. Existing history was kept. \(error)"
+                        item.packetStatus = "History write failed"
+                    }
+                }
             } catch {
                 item.lastPacketValid = false
+                if id == selectedID { recordValidatedThisSession = false }
                 item.packetStatus = "Advertisement rejected: \(error)"
             }
         }

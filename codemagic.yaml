@@ -1,6 +1,6 @@
 workflows:
-  ios-phase1-unsigned:
-    name: GlucoTrail iOS Phase 1 unsigned validation
+  ios-unsigned:
+    name: GlucoTrail iOS unsigned validation
     instance_type: mac_mini_m2
     max_build_duration: 30
     environment:
@@ -22,6 +22,11 @@ workflows:
           set -eu
           cd "$CM_BUILD_DIR"
           bash ios/scripts/build-unsigned.sh
+      - name: Test dashboard and history on iPhone Simulator
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          bash ios/scripts/test-ui.sh
     artifacts:
       - ios/GlucoTrail-Simulator.zip
       - ios/GlucoTrail-iPhone-Unsigned.zip
