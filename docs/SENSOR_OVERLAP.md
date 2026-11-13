@@ -1,42 +1,34 @@
-# Dual sensor overlap: implementation status
+# Dual AiDEX X sensor overlap (experimental)
 
-This feature is **experimental and incomplete**. Do not use it as your only
-glucose monitoring method. See [Issue #3](https://github.com/Comtech8080/GlucoTrail/issues/3).
+**Development status:** Implementation on `feature/dual-sensor-calibration-assist`, not released. See [Issue #3](https://github.com/Comtech8080/GlucoTrail/issues/3) and [Draft PR #4](https://github.com/Comtech8080/GlucoTrail/pull/4).
 
 ## Implemented on this branch
 
-- Passive Android PendingIntent BLE scanning can filter both a primary and a
-  configured replacement AiDEX X address.
-- Background receiver persists replacement advertisements under the replacement
-  sensor's **own serial** with existing CRC validation. Only the primary sensor
-  produces glucose alarms.
-- `AidexViewModel.configureReplacementSensor(AidexSensor)` stores the next
-  sensor's serial/address without selecting it as primary.
-- `refreshOverlapComparison()` loads separately stored readings and publishes
-  the latest trustworthy paired comparison.
-- `SensorOverlapComparison` rejects invalid, CRC-failed, stale, warm-up, and
-  time-mismatched readings; an optional fingerstick comparison reports each
-  sensor's error without automatically calibrating from the old sensor.
-- Unit tests cover sample pairing, discrepancy detection, fingerstick
-  comparison and readiness conditions.
+- A Dual Sensor Monitoring screen accessible from the app settings menu.
+- Old, New and Compare graph modes with 2, 4, 6, 48 and 72-hour ranges. Separate colors and no fabricated readings between gaps.
+- Start / activate replacement flow that preserves the current primary selection and no longer explicitly stops foreground monitoring during secondary activation.
+- PendingIntent BLE scan filters for the two sensor addresses; both streams saved with their own serials.
+- Primary-only glucose alarms, so replacement readings do not generate duplicate high/low notifications.
+- Opt-in automatic primary handover when the old sensor has supplied no verified readings for **15 minutes** and the replacement has at least three recent valid, distinct-minute post-warmup samples (within 5 minutes).
+- Manual primary switch only after a fresh CRC-verified post-warmup replacement reading.
+- Preserves old/new history references and a separate history of display calibration adjustments.
+- Fingerstick-meter comparison to show individual sensor errors. **No automatic calibration using the old CGM**. The explicit, user-confirmed fingerstick action adds a time-based correction to replacement display readings, retaining raw data.
+- Unit tests for stream comparison validity, time-window filtering, warmup rejection and replacement readiness.
 
-## Still required before a usable Android release
+## Testing required before release
 
-1. Wire the new sensor registration into the Start New Sensor page.
-2. Preserve primary monitoring during replacement activation (activation
-   currently stops the foreground monitoring service).
-3. Build the two individual graphs and the overlay comparison graph, plus
-   calibration-assist prompts for a fingerstick reference.
-4. Implement reliable primary handover with explicit expiry detection,
-   connection-loss handling, manual override and alarm continuity.
-5. Exercise dual GATT/advertising and background scanning with **two physical
-   AiDEX X all-in-one sensors** and validate Android power restrictions.
-6. Run Gradle tests, build an APK, perform on-device tests and release only
-   after confirming no monitoring regression.
+1. Confirm GitHub Actions Android unit tests, compilation, and lint succeed on the latest commit.
+2. Check on real Android phone with **two AiDEX X all-in-one sensors** that activation of the second does not affect primary alarm continuity.
+3. Test simultaneous BLE scan packets, GATT and reconnection behaviour in background, screen-off and battery-restricted modes.
+4. Test automatic handover during actual old-sensor expiry and transient Bluetooth loss, manual handover, reboot and app update.
+5. Validate history, calibration adjustment history and no gaps invented by the charts.
+6. Verify alerts if **neither** sensor can provide a reliable glucose value.
+7. Confirm sensor firmware permits the use pattern. Do not use outside manufacturer's validated lifespan.
 
-## Safety
+## Important limitations
 
-The 14-day-labelled sensor's expiration is not bypassed. Extra life is not
-guaranteed. Do not use readings from an expired or unreliable sensor to make
-treatment decisions. A CGM-to-CGM difference is not a reference calibration:
-confirm with a fingerstick and follow official sensor calibration guidance.
+- Auto-handover is off by default; it is an experimental loss-of-readings fallback, **not** proof of sensor end-of-life. A Bluetooth disconnect can mimic expiration.
+- The app cannot ensure readings are medically reliable beyond the sensor's printed 14-day expiration.
+- Readings from two CGMs may differ because of lag or calibration drift. A failing old sensor is not a trustworthy reference for the new one.
+- Calibration in this app is a display-level adjustment, not a calibration command to AiDEX sensor firmware. Follow manufacturer's approved calibration steps and use a fingerstick meter to confirm unexpected values.
+- Until hardware tests are complete, do not use this build as the sole source of glucose readings or alarms.
