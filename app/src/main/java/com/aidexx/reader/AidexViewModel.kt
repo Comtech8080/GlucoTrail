@@ -4,6 +4,7 @@ import android.app.Application
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -82,6 +83,35 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     )
     val selectedSerial: StateFlow<String?> = _selectedSerial.asStateFlow()
 
+    private val _overlapOldSerial = MutableStateFlow(prefs.getString("overlap_old_serial", null))
+    val overlapOldSerial: StateFlow<String?> = _overlapOldSerial.asStateFlow()
+    private val _overlapNewSerial = MutableStateFlow(prefs.getString("overlap_new_serial", null))
+    val overlapNewSerial: StateFlow<String?> = _overlapNewSerial.asStateFlow()
+
+    // Background scan receiver can promote the next sensor while UI is open.
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "selected_sensor_serial") {
+            val newPrimary = prefs.getString("selected_sensor_serial", null)
+            if (_selectedSerial.value != newPrimary) {
+                _selectedSerial.value = newPrimary
+                newPrimary?.let { serial ->
+                    viewModelScope.launch(Dispatchers.IO) {
+                        loadRecentHistory(serial)
+                        loadCalibrations(serial)
+                        resolveSelectedSensorActivationStart(serial)
+                        loadCombinedRecentHistory()
+                    }
+                }
+            }
+        }
+        if (key == "replacement_sensor_serial") {
+            _replacementSerial.value = prefs.getString("replacement_sensor_serial", null)
+        }
+        if (key == "replacement_auto_handover") {
+            _autoHandoverEnabled.value = prefs.getBoolean("replacement_auto_handover", false)
+        }
+    }
+
     private val _replacementSerial = MutableStateFlow(
         prefs.getString("replacement_sensor_serial", null)
     )
@@ -113,7 +143,11 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit()
             .putString("replacement_sensor_serial", serial)
             .putString("replacement_sensor_address", address)
+            .putString("overlap_old_serial", _selectedSerial.value)
+            .putString("overlap_new_serial", serial)
             .apply()
+        _overlapOldSerial.value = _selectedSerial.value
+        _overlapNewSerial.value = serial
         _replacementSerial.value = serial
         AlarmMonitorController.sync(
             getApplication<Application>(),
@@ -139,8 +173,8 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Compare two independently saved raw sensor streams, never autocalibrate. */
     fun refreshOverlapComparison() {
-        val primary = _selectedSerial.value ?: return
-        val replacement = _replacementSerial.value ?: return
+        val primary = _overlapOldSerial.value ?: _selectedSerial.value ?: return
+        val replacement = _overlapNewSerial.value ?: _replacementSerial.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
             val oldReadings = historyDb.loadRecentReadings(primary, 1)
             val newReadings = historyDb.loadRecentReadings(replacement, 1)
@@ -242,6 +276,7 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
             .asStateFlow()
 
     init {
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         HistoryAutoRecoveryStatus
             .initialize(
                 app.applicationContext
@@ -1364,6 +1399,7 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         scanner.stop()
         activator.cancel()
         historyBackfill.cancel()
