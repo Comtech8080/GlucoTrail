@@ -9,6 +9,7 @@ import android.content.Intent
 import android.os.Build
 import com.aidexx.reader.alarm.ContinuousMonitoringStatus
 import com.aidexx.reader.alarm.GlucoseAlarmEvaluator
+import com.aidexx.reader.alarm.AlarmMonitorController
 import com.aidexx.reader.data.AidexHistoryDatabase
 import com.aidexx.reader.data.CalibrationTimeline
 import com.aidexx.reader.protocol.AidexAdvertisementParser
@@ -109,6 +110,18 @@ class AidexBackgroundScanReceiver :
                 ?.uppercase()
                 ?: return
 
+        // Independently identify replacement packets by their BLE address.
+        // Never evaluate secondary readings as primary glucose alarms.
+        val replacementSerial = prefs.getString("replacement_sensor_serial", null)
+            ?.trim()?.uppercase()
+        val replacementAddress = prefs.getString("replacement_sensor_address", null)
+            ?.trim()?.uppercase()
+        val replacementConfigured =
+            !replacementSerial.isNullOrBlank() &&
+                !replacementAddress.isNullOrBlank() &&
+                replacementSerial != selectedSerial &&
+                replacementAddress != expectedAddress
+
         val database =
             AidexHistoryDatabase(
                 context
@@ -136,30 +149,34 @@ class AidexBackgroundScanReceiver :
                         ?.uppercase()
                         ?: return@forEach
 
-                if (
-                    address !=
-                    expectedAddress
-                ) {
+                val isPrimary = address == expectedAddress
+                val isReplacement =
+                    replacementConfigured && address == replacementAddress
+                if (!isPrimary && !isReplacement) {
                     return@forEach
                 }
-
+                val matchedSerial =
+                    if (isPrimary) selectedSerial else replacementSerial!!
                 val reading =
                     newestReading(
                         serial =
-                            selectedSerial,
+                            matchedSerial,
                         result =
                             result
                     )
                         ?: return@forEach
 
+                val matchedSavedSensor =
+                    if (isPrimary) savedSensor else database.loadSavedSensors()
+                        .firstOrNull { it.serial.equals(matchedSerial, ignoreCase = true) }
                 val sensor =
                     AidexSensor(
                         name =
-                            savedSensor
+                            matchedSavedSensor
                                 ?.name
-                                ?: "AiDEX X-$selectedSerial",
+                                ?: "AiDEX X-$matchedSerial",
                         serial =
-                            selectedSerial,
+                            matchedSerial,
                         address =
                             address,
                         rssi =
@@ -171,6 +188,18 @@ class AidexBackgroundScanReceiver :
                 database.saveSensor(
                     sensor
                 )
+
+                if (!isPrimary) {
+                    // The new sensor's packets are kept as distinct history;
+                    // alarms and monitoring status still belong to the old one.
+                    considerAutomaticHandover(
+                        context = context,
+                        database = database,
+                        selectedSerial = selectedSerial,
+                        replacementSerial = matchedSerial
+                    )
+                    return@forEach
+                }
 
                 ContinuousMonitoringStatus
                     .markBackgroundPacket(
@@ -220,6 +249,51 @@ class AidexBackgroundScanReceiver :
         } finally {
             database.close()
         }
+    }
+
+
+    /**
+     * Fail over only after several recent, CRC-verified replacement readings
+     * and a sustained absence of valid primary data. A silent disconnect is
+     * NOT proof the old sensor has expired. Auto-handover is opt-in.
+     */
+    private fun considerAutomaticHandover(
+        context: Context,
+        database: AidexHistoryDatabase,
+        selectedSerial: String,
+        replacementSerial: String
+    ) {
+        val prefs = context.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("replacement_auto_handover", false)) return
+        if (!prefs.getString("selected_sensor_serial", null)
+                .equals(selectedSerial, ignoreCase = true)) return
+
+        val now = System.currentTimeMillis()
+        val oldLast = database.loadRecentReadings(selectedSerial, 1)
+            .asSequence()
+            .filter { it.crcValid && it.valid && !it.isWarmup }
+            .maxOfOrNull { it.receivedAtMs } ?: return
+        if (now - oldLast < 15 * 60_000L) return
+
+        val candidates = database.loadRecentReadings(replacementSerial, 1)
+            .asSequence()
+            .filter {
+                it.crcValid && it.valid && !it.isWarmup &&
+                    it.receivedAtMs in (now - 5 * 60_000L)..now
+            }
+            .distinctBy { it.sensorMinute }
+            .toList()
+        if (candidates.size < 3) return
+
+        prefs.edit()
+            .putString("overlap_old_serial", selectedSerial)
+            .putString("overlap_new_serial", replacementSerial)
+            .putString("selected_sensor_serial", replacementSerial)
+            .remove("replacement_sensor_serial")
+            .remove("replacement_sensor_address")
+            .putBoolean("replacement_auto_handover", false)
+            .apply()
+        AlarmMonitorController.sync(context, reason = "overlap_primary_handover")
     }
 
     private fun newestReading(

@@ -4,6 +4,7 @@ import android.app.Application
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -25,6 +26,7 @@ import com.aidexx.reader.data.DailyPatternReport
 import com.aidexx.reader.data.GlucoseNote
 import com.aidexx.reader.data.NotePhotoStore
 import com.aidexx.reader.data.GlucosePeriodSummaryReport
+import com.aidexx.reader.data.SensorOverlapComparison
 import com.aidexx.reader.data.SensorUsageReport
 import com.aidexx.reader.data.TimeInRangeReport
 import com.aidexx.reader.protocol.AidexReading
@@ -80,6 +82,122 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         prefs.getString("selected_sensor_serial", null)
     )
     val selectedSerial: StateFlow<String?> = _selectedSerial.asStateFlow()
+
+    private val _overlapOldSerial = MutableStateFlow(prefs.getString("overlap_old_serial", null))
+    val overlapOldSerial: StateFlow<String?> = _overlapOldSerial.asStateFlow()
+    private val _overlapNewSerial = MutableStateFlow(prefs.getString("overlap_new_serial", null))
+    val overlapNewSerial: StateFlow<String?> = _overlapNewSerial.asStateFlow()
+
+    // Background scan receiver can promote the next sensor while UI is open.
+    private val prefsListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == "selected_sensor_serial") {
+            val newPrimary = prefs.getString("selected_sensor_serial", null)
+            if (_selectedSerial.value != newPrimary) {
+                _selectedSerial.value = newPrimary
+                newPrimary?.let { serial ->
+                    viewModelScope.launch(Dispatchers.IO) {
+                        loadRecentHistory(serial)
+                        loadCalibrations(serial)
+                        resolveSelectedSensorActivationStart(serial)
+                        loadCombinedRecentHistory()
+                    }
+                }
+            }
+        }
+        if (key == "replacement_sensor_serial") {
+            _replacementSerial.value = prefs.getString("replacement_sensor_serial", null)
+        }
+        if (key == "replacement_auto_handover") {
+            _autoHandoverEnabled.value = prefs.getBoolean("replacement_auto_handover", false)
+        }
+    }
+
+    private val _replacementSerial = MutableStateFlow(
+        prefs.getString("replacement_sensor_serial", null)
+    )
+    val replacementSerial: StateFlow<String?> = _replacementSerial.asStateFlow()
+    private val _autoHandoverEnabled = MutableStateFlow(
+        prefs.getBoolean("replacement_auto_handover", false)
+    )
+    val autoHandoverEnabled: StateFlow<Boolean> = _autoHandoverEnabled.asStateFlow()
+
+    fun setAutoHandoverEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("replacement_auto_handover", enabled).apply()
+        _autoHandoverEnabled.value = enabled
+    }
+
+    private val _overlapComparison =
+        MutableStateFlow<SensorOverlapComparison.PairedReading?>(null)
+    val overlapComparison: StateFlow<SensorOverlapComparison.PairedReading?> =
+        _overlapComparison.asStateFlow()
+
+    private val _overlapCalibrations =
+        MutableStateFlow<Map<String, List<CalibrationEvent>>>(emptyMap())
+    val overlapCalibrations: StateFlow<Map<String, List<CalibrationEvent>>> =
+        _overlapCalibrations.asStateFlow()
+
+    /**
+     * Register a replacement sensor without changing the primary or its
+     * glucose alarm source. Call this with a scanned sensor after activation.
+     */
+    fun configureReplacementSensor(sensor: AidexSensor) {
+        val serial = sensor.serial.trim().uppercase()
+        val address = sensor.address.trim().uppercase()
+        require(serial.isNotBlank() && address.isNotBlank())
+        require(!serial.equals(_selectedSerial.value, ignoreCase = true))
+        prefs.edit()
+            .putString("replacement_sensor_serial", serial)
+            .putString("replacement_sensor_address", address)
+            .putString("overlap_old_serial", _selectedSerial.value)
+            .putString("overlap_new_serial", serial)
+            .apply()
+        _overlapOldSerial.value = _selectedSerial.value
+        _overlapNewSerial.value = serial
+        _replacementSerial.value = serial
+        AlarmMonitorController.sync(
+            getApplication<Application>(),
+            reason = "replacement_sensor_configured"
+        )
+        refreshOverlapComparison()
+    }
+
+    fun clearReplacementSensor() {
+        prefs.edit()
+            .remove("replacement_sensor_serial")
+            .remove("replacement_sensor_address")
+            .putBoolean("replacement_auto_handover", false)
+            .apply()
+        _autoHandoverEnabled.value = false
+        _replacementSerial.value = null
+        _overlapComparison.value = null
+        AlarmMonitorController.sync(
+            getApplication<Application>(),
+            reason = "replacement_sensor_cleared"
+        )
+    }
+
+    /** Compare two independently saved raw sensor streams, never autocalibrate. */
+    fun refreshOverlapComparison() {
+        val primary = _overlapOldSerial.value ?: _selectedSerial.value ?: return
+        val replacement = _overlapNewSerial.value ?: _replacementSerial.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val oldReadings = historyDb.loadRecentReadings(primary, RECENT_MEMORY_DAYS)
+            val newReadings = historyDb.loadRecentReadings(replacement, RECENT_MEMORY_DAYS)
+            _historyBySerial.value = _historyBySerial.value.toMutableMap().apply {
+                put(primary.uppercase(), oldReadings)
+                put(replacement.uppercase(), newReadings)
+            }
+            _overlapComparison.value = SensorOverlapComparison.pair(
+                oldReadings,
+                newReadings,
+                System.currentTimeMillis()
+            )
+            _overlapCalibrations.value = mapOf(
+                primary.uppercase() to historyDb.loadCalibrations(primary),
+                replacement.uppercase() to historyDb.loadCalibrations(replacement)
+            )
+        }
+    }
 
     private val _selectedSensorActivationStartedAtMs =
         MutableStateFlow<Long?>(
@@ -167,6 +285,7 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
             .asStateFlow()
 
     init {
+        prefs.registerOnSharedPreferenceChangeListener(prefsListener)
         HistoryAutoRecoveryStatus
             .initialize(
                 app.applicationContext
@@ -320,14 +439,13 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                 event
             )
 
-            loadCalibrations(
-                serial
-            )
-
+            if (serial.equals(_selectedSerial.value, ignoreCase = true)) {
+                loadCalibrations(serial)
+            }
+            refreshOverlapComparison()
             AlarmMonitorController.sync(
                 getApplication<Application>(),
-                reason =
-                    "calibration_changed"
+                reason = "calibration_changed"
             )
         }
     }
@@ -726,13 +844,16 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     fun stopScanning() = scanner.stop()
     fun activate(
         device: BluetoothDevice,
-        serial: String
+        serial: String,
+        preservePrimaryMonitoring: Boolean = false
     ) {
-        pauseContinuousMonitoringForActivation()
-        activator.start(
-            device,
-            serial
-        )
+        // On replacement activation the primary sensor must remain active.
+        // Separate GATT clients may still be subject to Android BLE limits;
+        // this path requires real two-sensor hardware validation.
+        if (!preservePrimaryMonitoring) {
+            pauseContinuousMonitoringForActivation()
+        }
+        activator.start(device, serial)
     }
 
     fun cancelActivation() {
@@ -756,6 +877,12 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
             )
         )
     }
+
+    fun sensorActivationStartedAt(serial: String?): Long? =
+        serial?.let {
+            prefs.getLong(sensorActivationKey(it.trim().uppercase()), 0L)
+                .takeIf { time -> time > 0L }
+        }
 
     fun recordSensorActivation(
         serial: String,
@@ -1286,6 +1413,7 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     override fun onCleared() {
+        prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         scanner.stop()
         activator.cancel()
         historyBackfill.cancel()
