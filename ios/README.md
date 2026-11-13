@@ -1,6 +1,6 @@
 # GlucoTrail iOS — Phase 2 dashboard and history
 
-Native SwiftUI iPhone app (iOS 16+) with a Foundation-only Swift package for protocol,
+Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
 The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; generated
 projects are intentionally untracked. Both build services run the same build script.
@@ -36,7 +36,7 @@ AiDEX scan responses may expose only a short manufacturer record. Such records a
 rejected; the app will not synthesize values or treat encrypted data as cleartext.
 CRC integrity does not establish authenticity or clinical accuracy. This is a foreground
 engineering prototype with no glucose alarms, background monitoring, dual-sensor handover,
-TestFlight distribution. Continue established monitoring for care.
+or TestFlight distribution. Continue established monitoring for care.
 
 ## Build and test
 
