@@ -878,6 +878,12 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    fun sensorActivationStartedAt(serial: String?): Long? =
+        serial?.let {
+            prefs.getLong(sensorActivationKey(it.trim().uppercase()), 0L)
+                .takeIf { time -> time > 0L }
+        }
+
     fun recordSensorActivation(
         serial: String,
         startedAtMs: Long =
