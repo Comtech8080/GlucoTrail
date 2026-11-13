@@ -86,6 +86,15 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         prefs.getString("replacement_sensor_serial", null)
     )
     val replacementSerial: StateFlow<String?> = _replacementSerial.asStateFlow()
+    private val _autoHandoverEnabled = MutableStateFlow(
+        prefs.getBoolean("replacement_auto_handover", false)
+    )
+    val autoHandoverEnabled: StateFlow<Boolean> = _autoHandoverEnabled.asStateFlow()
+
+    fun setAutoHandoverEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("replacement_auto_handover", enabled).apply()
+        _autoHandoverEnabled.value = enabled
+    }
 
     private val _overlapComparison =
         MutableStateFlow<SensorOverlapComparison.PairedReading?>(null)
@@ -117,7 +126,9 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit()
             .remove("replacement_sensor_serial")
             .remove("replacement_sensor_address")
+            .putBoolean("replacement_auto_handover", false)
             .apply()
+        _autoHandoverEnabled.value = false
         _replacementSerial.value = null
         _overlapComparison.value = null
         AlarmMonitorController.sync(
@@ -790,13 +801,16 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     fun stopScanning() = scanner.stop()
     fun activate(
         device: BluetoothDevice,
-        serial: String
+        serial: String,
+        preservePrimaryMonitoring: Boolean = false
     ) {
-        pauseContinuousMonitoringForActivation()
-        activator.start(
-            device,
-            serial
-        )
+        // On replacement activation the primary sensor must remain active.
+        // Separate GATT clients may still be subject to Android BLE limits;
+        // this path requires real two-sensor hardware validation.
+        if (!preservePrimaryMonitoring) {
+            pauseContinuousMonitoringForActivation()
+        }
+        activator.start(device, serial)
     }
 
     fun cancelActivation() {
