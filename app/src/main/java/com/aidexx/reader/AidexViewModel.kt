@@ -25,6 +25,7 @@ import com.aidexx.reader.data.DailyPatternReport
 import com.aidexx.reader.data.GlucoseNote
 import com.aidexx.reader.data.NotePhotoStore
 import com.aidexx.reader.data.GlucosePeriodSummaryReport
+import com.aidexx.reader.data.SensorOverlapComparison
 import com.aidexx.reader.data.SensorUsageReport
 import com.aidexx.reader.data.TimeInRangeReport
 import com.aidexx.reader.protocol.AidexReading
@@ -80,6 +81,69 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         prefs.getString("selected_sensor_serial", null)
     )
     val selectedSerial: StateFlow<String?> = _selectedSerial.asStateFlow()
+
+    private val _replacementSerial = MutableStateFlow(
+        prefs.getString("replacement_sensor_serial", null)
+    )
+    val replacementSerial: StateFlow<String?> = _replacementSerial.asStateFlow()
+
+    private val _overlapComparison =
+        MutableStateFlow<SensorOverlapComparison.PairedReading?>(null)
+    val overlapComparison: StateFlow<SensorOverlapComparison.PairedReading?> =
+        _overlapComparison.asStateFlow()
+
+    /**
+     * Register a replacement sensor without changing the primary or its
+     * glucose alarm source. Call this with a scanned sensor after activation.
+     */
+    fun configureReplacementSensor(sensor: AidexSensor) {
+        val serial = sensor.serial.trim().uppercase()
+        val address = sensor.address.trim().uppercase()
+        require(serial.isNotBlank() && address.isNotBlank())
+        require(!serial.equals(_selectedSerial.value, ignoreCase = true))
+        prefs.edit()
+            .putString("replacement_sensor_serial", serial)
+            .putString("replacement_sensor_address", address)
+            .apply()
+        _replacementSerial.value = serial
+        AlarmMonitorController.sync(
+            getApplication<Application>(),
+            reason = "replacement_sensor_configured"
+        )
+        refreshOverlapComparison()
+    }
+
+    fun clearReplacementSensor() {
+        prefs.edit()
+            .remove("replacement_sensor_serial")
+            .remove("replacement_sensor_address")
+            .apply()
+        _replacementSerial.value = null
+        _overlapComparison.value = null
+        AlarmMonitorController.sync(
+            getApplication<Application>(),
+            reason = "replacement_sensor_cleared"
+        )
+    }
+
+    /** Compare two independently saved raw sensor streams, never autocalibrate. */
+    fun refreshOverlapComparison() {
+        val primary = _selectedSerial.value ?: return
+        val replacement = _replacementSerial.value ?: return
+        viewModelScope.launch(Dispatchers.IO) {
+            val oldReadings = historyDb.loadRecentReadings(primary, 1)
+            val newReadings = historyDb.loadRecentReadings(replacement, 1)
+            _historyBySerial.value = _historyBySerial.value.toMutableMap().apply {
+                put(primary.uppercase(), oldReadings)
+                put(replacement.uppercase(), newReadings)
+            }
+            _overlapComparison.value = SensorOverlapComparison.pair(
+                oldReadings,
+                newReadings,
+                System.currentTimeMillis()
+            )
+        }
+    }
 
     private val _selectedSensorActivationStartedAtMs =
         MutableStateFlow<Long?>(
