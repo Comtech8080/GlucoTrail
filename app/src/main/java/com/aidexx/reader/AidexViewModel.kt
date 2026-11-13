@@ -131,6 +131,11 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     val overlapComparison: StateFlow<SensorOverlapComparison.PairedReading?> =
         _overlapComparison.asStateFlow()
 
+    private val _overlapCalibrations =
+        MutableStateFlow<Map<String, List<CalibrationEvent>>>(emptyMap())
+    val overlapCalibrations: StateFlow<Map<String, List<CalibrationEvent>>> =
+        _overlapCalibrations.asStateFlow()
+
     /**
      * Register a replacement sensor without changing the primary or its
      * glucose alarm source. Call this with a scanned sensor after activation.
@@ -186,6 +191,10 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                 oldReadings,
                 newReadings,
                 System.currentTimeMillis()
+            )
+            _overlapCalibrations.value = mapOf(
+                primary.uppercase() to historyDb.loadCalibrations(primary),
+                replacement.uppercase() to historyDb.loadCalibrations(replacement)
             )
         }
     }
@@ -430,14 +439,13 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                 event
             )
 
-            loadCalibrations(
-                serial
-            )
-
+            if (serial.equals(_selectedSerial.value, ignoreCase = true)) {
+                loadCalibrations(serial)
+            }
+            refreshOverlapComparison()
             AlarmMonitorController.sync(
                 getApplication<Application>(),
-                reason =
-                    "calibration_changed"
+                reason = "calibration_changed"
             )
         }
     }
