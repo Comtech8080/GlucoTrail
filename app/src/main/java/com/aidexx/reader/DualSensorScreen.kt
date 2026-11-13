@@ -27,6 +27,11 @@ import kotlin.math.abs
 fun DualSensorScreen(vm: AidexViewModel, onStartReplacement: () -> Unit) {
     val selected by vm.selectedSerial.collectAsState()
     val replacement by vm.replacementSerial.collectAsState()
+    val priorPrimary by vm.overlapOldSerial.collectAsState()
+    val recordedReplacement by vm.overlapNewSerial.collectAsState()
+    val oldSerial = priorPrimary ?: selected
+    val newSerial = recordedReplacement ?: replacement
+    val calibrationHistory by vm.overlapCalibrations.collectAsState()
     val history by vm.historyBySerial.collectAsState()
     val comparison by vm.overlapComparison.collectAsState()
     val autoHandover by vm.autoHandoverEnabled.collectAsState()
@@ -34,11 +39,12 @@ fun DualSensorScreen(vm: AidexViewModel, onStartReplacement: () -> Unit) {
     var graphMode by remember { mutableStateOf(2) }
     var hours by remember { mutableIntStateOf(6) }
     var fingerstick by remember { mutableStateOf("") }
+    var confirmAdjustment by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
-    val old = history[selected?.uppercase()].orEmpty()
-    val next = history[replacement?.uppercase()].orEmpty()
+    val old = history[oldSerial?.uppercase()].orEmpty()
+    val next = history[newSerial?.uppercase()].orEmpty()
 
-    LaunchedEffect(selected, replacement) {
+    LaunchedEffect(selected, replacement, oldSerial, newSerial) {
         while (true) {
             vm.refreshOverlapComparison()
             delay(30_000L)
@@ -51,8 +57,10 @@ fun DualSensorScreen(vm: AidexViewModel, onStartReplacement: () -> Unit) {
     ) {
         Text("Dual sensor monitoring", style = MaterialTheme.typography.headlineSmall)
         Text("The old sensor stays primary until you switch or automatic handover confirms a ready replacement.")
-        Text("Primary: ${selected ?: "None"}")
-        Text("Replacement: ${replacement ?: "Not configured"}")
+        Text("Current primary: ${selected ?: "None"}")
+        Text("Old sensor: ${oldSerial ?: "None"}")
+        Text("New sensor: ${newSerial ?: "Not configured"}")
+        if (newSerial == selected && newSerial != null) Text("Handover completed: new sensor is primary.")
         Button(onClick = onStartReplacement, enabled = selected != null && replacement == null) {
             Text("Add / activate replacement sensor")
         }
@@ -122,9 +130,45 @@ fun DualSensorScreen(vm: AidexViewModel, onStartReplacement: () -> Unit) {
                     val reference = SensorOverlapComparison.compareFingerstick(pair, meterMgDl)
                     Text("Old difference from meter: %.1f mmol/L".format(reference.primaryErrorMgDl / 18.0))
                     Text("New difference from meter: %.1f mmol/L".format(reference.replacementErrorMgDl / 18.0))
-                    Text("This compares values only. It does not calibrate either sensor.", style = MaterialTheme.typography.bodySmall)
+                    Text("Meter values can be used for a manual display adjustment. The raw sensor data stays unchanged.", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = { confirmAdjustment = true }) {
+                        Text("Adjust replacement using fingerstick")
+                    }
+                    if (confirmAdjustment) {
+                        AlertDialog(
+                            onDismissRequest = { confirmAdjustment = false },
+                            title = { Text("Confirm display calibration") },
+                            text = {
+                                Text("Apply a time-based display correction to the new sensor using your fingerstick result of ${fingerstick} mmol/L? This does not change sensor firmware or raw readings. Use only a fresh meter result and follow manufacturer guidance.")
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    vm.saveCalibration(pair.replacement, meterMgDl)
+                                    status = "Fingerstick-based display adjustment recorded."
+                                    confirmAdjustment = false
+                                }) { Text("Confirm") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { confirmAdjustment = false }) { Text("Cancel") }
+                            }
+                        )
+                    }
                 }
             } ?: Text("Waiting for two trustworthy readings taken close together.")
+            if (oldSerial != null || newSerial != null) {
+                Text("Display calibration history", style = MaterialTheme.typography.titleMedium)
+                listOfNotNull(oldSerial, newSerial).distinct().forEach { serial ->
+                    Text("Sensor $serial")
+                    val events = calibrationHistory[serial.uppercase()].orEmpty()
+                    if (events.isEmpty()) Text("No saved adjustments", style = MaterialTheme.typography.bodySmall)
+                    events.takeLast(5).asReversed().forEach { event ->
+                        Text(
+                            "${DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(event.createdAtMs))}: %+.1f mmol/L".format(event.offsetMmol),
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
         }
         Text("Readings from expired or unreliable sensors must not be used for treatment decisions. Confirm unexpected readings with a fingerstick meter.", style = MaterialTheme.typography.bodySmall)
     }
