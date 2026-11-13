@@ -181,8 +181,8 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         val primary = _overlapOldSerial.value ?: _selectedSerial.value ?: return
         val replacement = _overlapNewSerial.value ?: _replacementSerial.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            val oldReadings = historyDb.loadRecentReadings(primary, 1)
-            val newReadings = historyDb.loadRecentReadings(replacement, 1)
+            val oldReadings = historyDb.loadRecentReadings(primary, RECENT_MEMORY_DAYS)
+            val newReadings = historyDb.loadRecentReadings(replacement, RECENT_MEMORY_DAYS)
             _historyBySerial.value = _historyBySerial.value.toMutableMap().apply {
                 put(primary.uppercase(), oldReadings)
                 put(replacement.uppercase(), newReadings)
