@@ -1,7 +1,7 @@
-# GlucoTrail iOS — Phase 1 sensor foundation
+# GlucoTrail iOS — Phase 2 dashboard and history
 
-Native SwiftUI iPhone app (iOS 16+) with a Foundation-only Swift package for protocol,
-identity persistence and deterministic connection policy. Android is unchanged.
+Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
+identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
 The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; generated
 projects are intentionally untracked. Both build services run the same build script.
 
@@ -36,7 +36,7 @@ AiDEX scan responses may expose only a short manufacturer record. Such records a
 rejected; the app will not synthesize values or treat encrypted data as cleartext.
 CRC integrity does not establish authenticity or clinical accuracy. This is a foreground
 engineering prototype with no glucose alarms, background monitoring, dual-sensor handover,
-history database or TestFlight distribution. Continue established monitoring for care.
+or TestFlight distribution. Continue established monitoring for care.
 
 ## Build and test
 
@@ -61,7 +61,7 @@ requires a separate signed distribution setup, which this workflow does not conf
 ## Codemagic
 
 Connect Comtech8080/GlucoTrail in Codemagic, select the branch containing this change,
-choose **GlucoTrail iOS Phase 1 unsigned validation**, and start a build. No secrets,
+choose **GlucoTrail iOS unsigned validation**, and start a build. No secrets,
 Apple account or signing profile are needed for these unsigned builds. The workflow is
 manual to avoid unsolicited recurring builds. Account connection and actual Codemagic
 execution must be done in the user's account; committing YAML does not activate them.
@@ -78,10 +78,50 @@ Check your account's included build allowance before running builds.
    and new-minute timing against Android; do not infer accuracy from simulation tests.
 3. Move out of range, verify timeout/retry limits; return and Stop/Start after exhaustion.
 4. Toggle Bluetooth, deny permission, lock/unlock, switch apps, force-quit and relaunch.
-   Expect foreground-only behavior. Saved identity should remain; glucose is not persisted.
+   Expect foreground-only behavior. Saved identity and glucose history should remain; restored readings must be marked historical.
 5. Switch sensors during connecting and during retry. No old callback may reconnect the
    old sensor. A same-name/new-UUID device must require explicit selection.
 6. Check invalid/short/duplicate packets never make a stale reading fresh. Verify Forget
    clears identity, demo stops connections, and larger accessibility text remains usable.
 7. Before adding encrypted GATT, capture authorized Android/iPhone handshake fixtures,
    validate crypto against known vectors and test every command on supported hardware.
+
+
+## Phase 2 dashboard and local history
+
+The dashboard shows the last selected-sensor reading, Android-matched trend arrow,
+receipt timestamp and freshness. Charts offer **2, 4, 6, 12, 24, 48 and 72 hours**,
+with mmol/L or mg/dL display. A History tab browses saved sensor identities by local
+calendar day, including identities that have been forgotten for connection purposes.
+
+Validated advertisements from the explicitly selected sensor are saved in SQLite
+under Application Support/GlucoseHistory/readings.sqlite. Unselected nearby sensors
+are not recorded. Composite UUID + serial + sensor minute identity prevents duplicate
+values and receipt-time refreshes across relaunches. Lower sensor minutes are ignored;
+no rollover, sensor restart or replacement is inferred. SQLite schema version 1 is
+created transactionally; unknown versions and corrupt files fail without deleting data.
+Write/read errors are shown in the app. A failed insert can be retried on a later packet.
+
+- Only receipt timestamps are plotted; no sensor wall-clock timestamps or previous-value
+  timestamps are invented. A new receipt is not proof of a recent sensor measurement.
+- Lines break at missing minutes, >=5-minute receipt gaps, identity changes and clock
+  discontinuities. Single readings remain visible. No smoothing or fabricated backfill.
+- At five minutes without a new reading, the displayed value is stale. Stopped reception,
+  rejected packets and restored history cannot become current because of a duplicate.
+  Historical trend arrows are labelled as the trend at the last reading.
+- Demo data is generated in memory with its own labelled identity. Enabling demo stops
+  Bluetooth. It never writes to the glucose database; disabling it does not restart BLE.
+- History is retained locally without automatic purging; the directory uses iOS complete
+  file protection and is excluded from backups. Uninstalling the app removes this history.
+  Forgetting the connection identity does not delete past readings.
+- Bluetooth connection status is separate from advertisement reception and data age.
+  Encrypted GATT remains disabled; this phase adds no sensor commands or background modes.
+
+Run `bash ios/scripts/test-ui.sh` after project generation for the iPhone Simulator
+smoke test. Both build services run it; its result bundle includes a dashboard screenshot.
+Swift tests cover database reopen/deduplication, isolated identities, schema/corruption
+handling, write-lock failure/retry, all chart windows, gaps, freshness and trend bands.
+
+Physical acceptance still required: verify saved Android-comparable readings across app
+relaunch, sensor selection, Bluetooth interruptions, midnight/daylight-saving changes,
+unit changes and large accessibility text. Simulator tests do not prove sensor reception.

@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.macOS(.v13), .iOS(.v16)],
     products: [.library(name: "GlucoTrailProtocol", targets: ["GlucoTrailProtocol"])],
     targets: [
-        .target(name: "GlucoTrailProtocol"),
+        .systemLibrary(name: "CSQLite", pkgConfig: "sqlite3"),
+        .target(name: "GlucoTrailProtocol", dependencies: ["CSQLite"]),
         .testTarget(name: "GlucoTrailProtocolTests", dependencies: ["GlucoTrailProtocol"])
     ]
 )
