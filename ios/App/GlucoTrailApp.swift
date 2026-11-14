@@ -91,8 +91,12 @@ struct ContentView: View {
         NavigationStack {
             List {
                 Section("Display") {
-                    Toggle("Use mmol/L", isOn: $mmol).accessibilityIdentifier("unitToggle")
-                    Toggle("Show demo data", isOn: $demo).accessibilityIdentifier("demoToggle")
+                    Picker("Glucose unit", selection: $mmol) {
+                        Text("mmol/L").tag(true)
+                        Text("mg/dL").tag(false)
+                    }.pickerStyle(.segmented).accessibilityIdentifier("unitPicker")
+                    Button(demo ? "Use real sensor history" : "Show demo data") { demo.toggle() }
+                        .accessibilityIdentifier("demoButton")
                     Text("Demo readings stay separate from your saved glucose history. Turning demo off leaves Bluetooth stopped until you start it.").font(.caption)
                 }
                 Section("Local history") {
