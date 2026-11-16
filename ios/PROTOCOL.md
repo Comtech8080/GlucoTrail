@@ -62,7 +62,7 @@ have not been established. No new BLE protocol interpretation was added for Phas
 
 Android's `data/SensorOverlapComparison.kt` supplies the observational comparison
 bounds: post-warm-up minute 60, glucose 18–800 mg/dL, fresh valid readings, receipt
-separation at most two minutes. `ui/DualSensorScreen.kt` describes a 15-minute
+separation at most two minutes. `DualSensorScreen.kt` describes a 15-minute
 primary-absence handover policy. iOS implements an explicit foreground-only opt-in
 with three consecutive replacement minutes, maximum 90-second intervals and latest
 age below 120 seconds. These are application safeguards, not newly established BLE

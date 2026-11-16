@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 2 dashboard and history
+# GlucoTrail iOS — Phase 3 dual-sensor replacement
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -8,9 +8,10 @@ projects are intentionally untracked. Both build services run the same build scr
 ## Implemented
 
 - Foreground CoreBluetooth discovery of service 181F and strict AiDEX X serial selection.
-- Explicit selection persists the peripheral UUID and advertised serial in local UserDefaults.
-  Start scan restores that UUID using CoreBluetooth retrieval, then scan fallback. A different
-  UUID requires explicit selection even when its name matches. Forget clears the saved identity.
+- Explicit selection persists primary/replacement UUIDs and serials in an atomic local file.
+  The former UserDefaults identity migrates to primary. Start scan restores saved UUIDs
+  using CoreBluetooth retrieval, then scan fallback. A different UUID requires explicit
+  selection even when its name matches. Forget clears both roles, preserving history.
 - Connection, service/characteristic discovery, timeouts (20s connection, 15s discovery),
   five retries with 2/4/8/16/32-second backoff, and cancellation on Stop, sensor change,
   Bluetooth loss or inactive app. Cancellation callbacks drain before another attempt.
