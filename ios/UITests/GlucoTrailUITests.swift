@@ -1,6 +1,44 @@
 import XCTest
 
 final class GlucoTrailUITests: XCTestCase {
+    func testSimulatedReplacementHandoverIsIsolated() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo"]
+        app.launch()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertTrue(app.staticTexts["pairPrimary"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["pairPrimary"].label.contains("DEMO000001"))
+        XCTAssertTrue(app.staticTexts["pairReplacement"].label.contains("DEMO000002"))
+        XCTAssertEqual(app.staticTexts["replacementReadiness"].label, "Ready for handover")
+        let modes = app.segmentedControls["overlapMode"]
+        for mode in ["Primary", "Replacement", "Compare"] {
+            for _ in 0..<4 where !modes.isHittable { app.swipeUp() }
+            modes.buttons[mode].tap()
+            XCTAssertTrue(modes.buttons[mode].isSelected)
+        }
+        XCTAssertTrue(app.otherElements["overlapChart"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 3 sensor overlap"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let handover = app.buttons["handoverButton"]
+        for _ in 0..<4 where !handover.isHittable { app.swipeDown() }
+        handover.tap()
+        app.buttons["Confirm handover"].tap()
+        let switched = NSPredicate(format: "label CONTAINS %@", "DEMO000002")
+        expectation(for: switched, evaluatedWith: app.staticTexts["pairPrimary"])
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(app.staticTexts["pairReplacement"].label, "Replacement: None")
+        app.tabBars.buttons["Dashboard"].tap()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertTrue(app.staticTexts["pairPrimary"].label.contains("DEMO000002"))
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["demoButton"].tap()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertEqual(app.staticTexts["pairPrimary"].label, "Primary: None")
+        XCTAssertEqual(app.staticTexts["pairReplacement"].label, "Replacement: None")
+    }
+
     override func setUp() {
         super.setUp()
         continueAfterFailure = false

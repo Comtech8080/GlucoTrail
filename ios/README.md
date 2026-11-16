@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 2 dashboard and history
+# GlucoTrail iOS — Phase 3 dual-sensor replacement
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -8,9 +8,10 @@ projects are intentionally untracked. Both build services run the same build scr
 ## Implemented
 
 - Foreground CoreBluetooth discovery of service 181F and strict AiDEX X serial selection.
-- Explicit selection persists the peripheral UUID and advertised serial in local UserDefaults.
-  Start scan restores that UUID using CoreBluetooth retrieval, then scan fallback. A different
-  UUID requires explicit selection even when its name matches. Forget clears the saved identity.
+- Explicit selection persists primary/replacement UUIDs and serials in an atomic local file.
+  The former UserDefaults identity migrates to primary. Start scan restores saved UUIDs
+  using CoreBluetooth retrieval, then scan fallback. A different UUID requires explicit
+  selection even when its name matches. Forget clears both roles, preserving history.
 - Connection, service/characteristic discovery, timeouts (20s connection, 15s discovery),
   five retries with 2/4/8/16/32-second backoff, and cancellation on Stop, sensor change,
   Bluetooth loss or inactive app. Cancellation callbacks drain before another attempt.
@@ -121,6 +122,53 @@ Run `bash ios/scripts/test-ui.sh` after project generation for the iPhone Simula
 smoke test. Both build services run it; its result bundle includes a dashboard screenshot.
 Swift tests cover database reopen/deduplication, isolated identities, schema/corruption
 handling, write-lock failure/retry, all chart windows, gaps, freshness and trend bands.
+
+## Phase 3: replacement and overlap
+
+Version 0.4.0 adds two independently reconnecting sensor roles. Adding a replacement
+keeps the primary connection and records both validated advertisement streams in the
+existing SQLite history. The Replacement tab provides primary/replacement/combined
+graphs, raw differences and an optional, unsaved meter-reference comparison. No
+calibration, glucose correction or sensor command is performed.
+
+Manual handover requires three consecutive new sensor minutes after minute 60,
+received no more than 90 seconds apart, with the latest less than 120 seconds old.
+Readiness is rechecked at confirmation. Automatic handover is OFF by default and
+must be explicitly enabled for the current foreground session. It additionally
+requires a primary reading accepted in that uninterrupted session, followed by
+15 minutes without a new primary reading. This is an application policy, not a
+validated expiry detector or a clinically validated switching rule.
+
+Stop, backgrounding, Bluetooth loss, relaunch, backward clock movement or a timer
+gap over 90 seconds clears eligibility and automatic consent. Duplicate and older
+minutes cannot restore readiness. A failed role save leaves roles unchanged and
+disarms automatic handover. Each sensor has an independent bounded connection retry
+state. Old callbacks cannot promote an unselected sensor.
+
+Roles and the last 200 transitions are saved together by atomic replacement in
+sensor-pair.json in the protected, backup-excluded history directory. Phase 1's
+saved identity migrates to primary. Corrupt files are reported without erasure.
+Switching or forgetting roles preserves both sensors' histories. After handover,
+overlap graphs retain the previous and new primary streams.
+
+Live comparison requires both post-warm-up readings to be less than five minutes
+old and received within two minutes of one another. Meter references are neither
+saved nor sent to the sensor. Demo handovers use memory-only identities and never
+change real roles or history. Android code and the BLE protocol boundary are unchanged:
+encrypted GATT, activation, background monitoring and alarms remain unavailable.
+
+Tests cover readiness, stale/replayed packets, interrupted sessions, auto-handover
+timing, independent reconnect state, atomic persistence and raw comparisons. UI tests
+exercise demo overlap modes, handover and isolation from real roles. Existing GitHub
+Actions and Codemagic workflows run the expanded tests and unsigned builds. Unsigned
+artifacts cannot be installed directly on an iPhone; signing is still required.
+
+Before physical use, test with two already activated sensors: verify both serials,
+compare raw advertisements with Android, interrupt each connection independently,
+exercise Stop/Start, Bluetooth off/on and background/foreground, verify no automatic
+handover across these interruptions, then test manual and explicitly enabled automatic
+handover while observing both devices. Confirm histories survive relaunch. Simulator
+tests do not validate real radio reception, sensor accuracy or clinical suitability.
 
 Physical acceptance still required: verify saved Android-comparable readings across app
 relaunch, sensor selection, Bluetooth interruptions, midnight/daylight-saving changes,
