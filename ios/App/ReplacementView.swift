@@ -16,6 +16,7 @@ struct ReplacementView: View {
     @State private var reference = ""
     @State private var loadError: String?
     @State private var demoMonitor = SensorPairMonitor()
+    @State private var preparedDemoEnd: Date?
 
     private var state: SensorPairState { demo ? demoMonitor.state : scanner.pairState }
     private var demoEnd: Date { samples.last?.receivedAt ?? Date() }
@@ -66,7 +67,7 @@ struct ReplacementView: View {
                     } else if state.primary == nil {
                         Text("Select your primary sensor in the Sensor tab first.")
                     }
-                    Text("Handover changes which sensor supplies the dashboard. It does not activate a sensor or change its readings. No background monitoring or glucose alarms are provided.")
+                    Text(demo ? "This simulated handover affects the replacement preview only. Real sensor roles and the dashboard demo stay unchanged." : "Handover changes which sensor supplies the dashboard. It does not activate a sensor or change its readings. No background monitoring or glucose alarms are provided.")
                         .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     Text("Sensor overlap").font(.title2.bold())
@@ -103,7 +104,12 @@ struct ReplacementView: View {
             .onAppear { if demo { prepareDemo() }; reload() }
             .onChange(of: scanner.historyRevision) { _ in reload() }
             .onChange(of: samples) { _ in if demo { prepareDemo() }; reload() }
-            .onChange(of: demo) { _ in reference = ""; if demo { prepareDemo() }; reload() }
+            .onChange(of: demo) { _ in
+                reference = ""
+                if demo { prepareDemo() }
+                else { preparedDemoEnd = nil; demoMonitor = SensorPairMonitor() }
+                reload()
+            }
             .onChange(of: mmol) { _ in reference = "" }
             .confirmationDialog("Switch primary sensor?", isPresented: $confirmHandover, titleVisibility: .visible) {
                 Button("Confirm handover") {
@@ -127,11 +133,13 @@ struct ReplacementView: View {
 
     private func prepareDemo() {
         guard let primary = samples.last?.identity, let replacement = DemoHistory.replacementRecords(from: samples).last?.identity else { return }
+        guard preparedDemoEnd != demoEnd else { return }
         var monitor = SensorPairMonitor(state: SensorPairState(primary: primary, replacement: replacement))
         monitor.beginMonitoring()
         for record in samples.suffix(3) { monitor.accept(record) }
         for record in DemoHistory.replacementRecords(from: samples).suffix(3) { monitor.accept(record) }
         demoMonitor = monitor
+        preparedDemoEnd = demoEnd
     }
 
     private func reload() {

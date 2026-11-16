@@ -40,7 +40,7 @@ struct ContentView: View {
 
     private func startDemo() {
         scanner.stop()
-        samples = DemoHistory.records(endingAt: Date())
+        if samples.isEmpty { samples = DemoHistory.records(endingAt: Date()) }
     }
 
     private var sensorView: some View {
