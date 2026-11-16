@@ -27,6 +27,8 @@ struct ContentView: View {
                 .tabItem { Label("Dashboard", systemImage: "chart.xyaxis.line") }
             HistoryView(scanner: scanner, mmol: mmol, demo: demo, samples: samples)
                 .tabItem { Label("History", systemImage: "clock") }
+            ReplacementView(scanner: scanner, mmol: mmol, demo: demo, samples: samples)
+                .tabItem { Label("Replacement", systemImage: "arrow.triangle.swap") }
             sensorView.tabItem { Label("Sensor", systemImage: "waveform.path.ecg") }
             settingsView.tabItem { Label("Settings", systemImage: "gearshape") }
         }
@@ -53,7 +55,7 @@ struct ContentView: View {
                     Text(scanner.status)
                     Text(scanner.connectionStatus)
                     if let identity = scanner.savedIdentity {
-                        Text("Saved serial: \(identity.serial)")
+                        Text("Primary serial: \(identity.serial)")
                         Text("iOS device ID: \(identity.peripheralID.uuidString)").font(.caption).textSelection(.enabled)
                     }
                     HStack {
@@ -69,6 +71,7 @@ struct ContentView: View {
                     }
                 }
                 Section("Nearby sensors") {
+                    if scanner.savedIdentity != nil { Text("To change primary, add a sensor in the Replacement tab and confirm handover there.").font(.caption) }
                     if scanner.sensors.isEmpty { Text("Start scanning near an already activated sensor, then select its serial. GlucoTrail cannot activate a sensor.") }
                     ForEach(scanner.sensors) { sensor in
                         Button { scanner.select(sensor.id) } label: {
@@ -80,7 +83,7 @@ struct ContentView: View {
                                 Spacer()
                                 if scanner.selectedID == sensor.id { Image(systemName: "checkmark.circle.fill") }
                             }
-                        }.disabled(sensor.serial == nil || demo)
+                        }.disabled(sensor.serial == nil || demo || (scanner.savedIdentity != nil && sensor.id != scanner.selectedID))
                     }
                 }
             }.navigationTitle("Sensor")
@@ -100,14 +103,14 @@ struct ContentView: View {
                     Text("Demo readings stay separate from your saved glucose history. Turning demo off leaves Bluetooth stopped until you start it.").font(.caption)
                 }
                 Section("Local history") {
-                    Text("Readings from your selected sensor are saved on this iPhone. History is excluded from device backups and is removed when the app is deleted. Forgetting a sensor keeps its history available in the History tab.")
+                    Text("Readings from your primary and replacement sensors are saved on this iPhone. History is excluded from device backups and is removed when the app is deleted. Forgetting a sensor keeps its history available in the History tab.")
                     if let error = scanner.storageError { Text(error).foregroundStyle(.red) }
                     Text("Manufacturer packets received: \(scanner.packetCount)")
-                    Button("Forget selected sensor", role: .destructive) { scanner.clear() }
+                    Button("Forget both sensor roles", role: .destructive) { scanner.clear() }
                 }
                 Section("About") {
-                    Text("GlucoTrail iOS · 0.3.0 (3)")
-                    Text("Phase 2: dashboard and history. Encrypted GATT readings, background monitoring and alarms are not enabled. No TestFlight build is available yet.")
+                    Text("GlucoTrail iOS · 0.4.0 (4)")
+                    Text("Phase 3: dual-sensor replacement. Encrypted GATT readings, background monitoring and alarms are not enabled. No TestFlight build is available yet.")
                     Link("GlucoTrail on GitHub", destination: URL(string: "https://github.com/Comtech8080/GlucoTrail")!)
                 }
             }.navigationTitle("Settings")
