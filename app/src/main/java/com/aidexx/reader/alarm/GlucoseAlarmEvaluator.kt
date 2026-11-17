@@ -13,6 +13,8 @@ object GlucoseAlarmEvaluator {
     private const val KEY_HIGH_ACTIVE =
         "alarm_state_high_active"
 
+    private const val KEY_ESCALATION = "alarm_high_escalation_level"
+
     private const val KEY_PENDING_ZONE =
         "alarm_fallback_pending_zone"
 
@@ -25,7 +27,9 @@ object GlucoseAlarmEvaluator {
     private enum class Zone {
         LOW,
         NORMAL,
-        HIGH
+        HIGH,
+        VERY_HIGH,
+        DANGER
     }
 
     /**
@@ -104,6 +108,10 @@ object GlucoseAlarmEvaluator {
                 mmol <=
                     lowLimit ->
                     Zone.LOW
+
+                mmol >= 20.0 -> Zone.DANGER
+
+                mmol >= 15.0 -> Zone.VERY_HIGH
 
                 mmol >=
                     highLimit ->
@@ -256,39 +264,31 @@ object GlucoseAlarmEvaluator {
                 false
         }
 
-        if (
-            mmol >=
-            highLimit
-        ) {
-            if (
-                !highActive
-            ) {
-                AlarmNotifications
-                    .notifyHigh(
-                        context =
-                            context,
-                        mmol =
-                            mmol,
-                        limit =
-                            highLimit,
-                        playSound =
-                            alarms.highEnabled
-                    )
-
-                highActive =
-                    true
-            }
-        } else if (
-            highActive
-        ) {
-            AlarmNotifications
-                .clearHigh(
-                    context
-                )
-
-            highActive =
-                false
+        // Escalate independently when crossing 15 and 20 mmol/L, even if
+        // the regular high alarm is already active. Never replay every minute.
+        val severity = when {
+            mmol >= 20.0 -> 3
+            mmol >= 15.0 -> 2
+            mmol >= highLimit -> 1
+            else -> 0
         }
+        val previousSeverity = prefs.getInt(KEY_ESCALATION, if(highActive) 1 else 0)
+        if (severity > previousSeverity) {
+            when(severity) {
+                3 -> AlarmNotifications.notifyDanger(context, mmol, alarms.highEnabled)
+                2 -> AlarmNotifications.notifyVeryHigh(context, mmol, alarms.highEnabled)
+                1 -> AlarmNotifications.notifyHigh(context, mmol, highLimit, alarms.highEnabled)
+            }
+        }
+        if (severity == 0 && highActive) {
+            AlarmNotifications.clearHigh(context)
+            AlarmNotifications.clearVeryHigh(context)
+            AlarmNotifications.clearDanger(context)
+        } else if(severity < 3) {
+            AlarmNotifications.clearDanger(context)
+            if(severity < 2) AlarmNotifications.clearVeryHigh(context)
+        }
+        highActive = severity > 0
 
         prefs.edit()
             .putBoolean(
@@ -299,6 +299,7 @@ object GlucoseAlarmEvaluator {
                 KEY_HIGH_ACTIVE,
                 highActive
             )
+            .putInt(KEY_ESCALATION, severity)
             .apply()
     }
 
