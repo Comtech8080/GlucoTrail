@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -Eq 'versionName[[:space:]]*=[[:space:]]*"0\.1\.60\.22"' app/build.gradle.kts
+          grep -Eq 'versionName[[:space:]]*=[[:space:]]*"0\.1\.60\.23"' app/build.gradle.kts
           grep -Eq 'versionCode[[:space:]]*=[[:space:]]*102' app/build.gradle.kts
           if gh release view v0.1.60.23 >/dev/null 2>&1; then
             echo "::error::v0.1.60.23 already has a release; refusing overwrite."
