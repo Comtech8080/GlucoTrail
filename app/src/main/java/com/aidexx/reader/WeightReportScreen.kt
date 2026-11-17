@@ -57,14 +57,14 @@ internal fun weightBmiLabel(bmi: Double): String = when {
     val context = LocalContext.current
     val db = remember { AidexHistoryDatabase(context.applicationContext) }
     var entries by remember { mutableStateOf(db.loadWeights()) }
-    var days by remember { mutableIntStateOf(7) }
+    var readingCount by remember { mutableIntStateOf(10) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var bodyFat by remember { mutableStateOf<Pair<Double, Long>?>(null) }
     var height by remember { mutableStateOf<Double?>(null) }
     var editing by remember { mutableStateOf<WeightEntry?>(null) }
     LaunchedEffect(reportActive) {
         if(reportActive) {
-            entries = db.loadWeights(); days = 7
+            entries = db.loadWeights(); readingCount = 10
             height = db.loadHeightCm(System.currentTimeMillis())
             bodyFat = db.loadLatestBodyFat(System.currentTimeMillis())
             while(true) { now = System.currentTimeMillis(); delay(30_000L) }
@@ -73,7 +73,8 @@ internal fun weightBmiLabel(bmi: Double): String = when {
     DisposableEffect(db) { onDispose { db.close() } }
     BackHandler(enabled = reportActive && editing == null, onBack = onBack)
     val latest = entries.filter { it.timestampMs <= now }.maxByOrNull { it.timestampMs }
-    val shown = entries.filter { it.timestampMs in (now-days*86_400_000L)..now }.sortedBy { it.timestampMs }
+    val shown = entries.filter { it.timestampMs <= now }.sortedBy { it.timestampMs }.let { if(readingCount == 0) it else it.takeLast(readingCount) }
+    val fatReadings = remember(now, readingCount, bodyFat) { db.loadBodyFatReadings(now).let { if(readingCount == 0) it else it.takeLast(readingCount) } }
     MaterialTheme(colorScheme = if(LocalTrailTheme.current.isModern) MaterialTheme.colorScheme else darkColorScheme(
         primary = WeightGreen,
         onPrimary = reportBackground,
@@ -113,6 +114,20 @@ internal fun weightBmiLabel(bmi: Double): String = when {
             }
         } }
         item { WeightCard {
+            Text("Body fat history",style=MaterialTheme.typography.titleLarge)
+            Text(if(readingCount == 0) "All readings" else "Last $readingCount readings",style=MaterialTheme.typography.labelMedium)
+            if(fatReadings.isEmpty()) Text("No body fat readings recorded")
+            else {
+                val values = fatReadings.map { it.first }
+                Text("Latest: %.1f%%".format(values.last()),style=MaterialTheme.typography.titleMedium)
+                if(values.size > 1) Text("Change: %+.1f percentage points".format(values.last()-values[values.lastIndex-1]),style=MaterialTheme.typography.bodySmall)
+                BodyFatGraph(fatReadings)
+                fatReadings.asReversed().forEach { (percent,time) ->
+                    Text("%.1f%%  •  %s".format(percent,weightDate(time)),style=MaterialTheme.typography.bodySmall)
+                }
+            }
+        } }
+        item { WeightCard {
             Text("BMI",style=MaterialTheme.typography.titleMedium)
             val cm = height
             if(latest != null && cm != null) {
@@ -129,12 +144,12 @@ internal fun weightBmiLabel(bmi: Double): String = when {
             Text("History chart",style=MaterialTheme.typography.titleLarge)
             var menu by remember { mutableStateOf(false) }
             Box {
-                TextButton(onClick={menu=true}) { Text("Last $days days ▾",color=WeightGreen) }
+                TextButton(onClick={menu=true}) { Text(if(readingCount == 0) "All readings ▾" else "Last $readingCount readings ▾",color=WeightGreen) }
                 DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
-                    listOf(7,14,30,60,90,180).forEach { d -> DropdownMenuItem(text={Text("Last $d days")},onClick={days=d;menu=false}) }
+                    listOf(5,10,20,0).forEach { count -> DropdownMenuItem(text={Text(if(count == 0) "All readings" else "Last $count readings")},onClick={readingCount=count;menu=false}) }
                 }
             }
-            if(shown.isEmpty()) Text("No readings in this period") else {
+            if(shown.isEmpty()) Text("No readings recorded") else {
                 val values=shown.map { it.weightKg*2.2046226218 }
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                     Text("Min: %.1f".format(values.minOrNull()),style=MaterialTheme.typography.labelMedium)
@@ -142,7 +157,7 @@ internal fun weightBmiLabel(bmi: Double): String = when {
                     Text("Max: %.1f".format(values.maxOrNull()),style=MaterialTheme.typography.labelMedium)
                 }
                 Text("lb",style=MaterialTheme.typography.labelSmall)
-                WeightGraph(shown,days,now)
+                WeightGraph(shown)
             }
         } }
         item { Text("History · edit note-linked entries in Notes",modifier=Modifier.padding(horizontal=20.dp),color=reportInk,style=MaterialTheme.typography.labelMedium) }
@@ -195,7 +210,7 @@ internal fun weightBmiLabel(bmi: Double): String = when {
     }
 }
 
-@Composable private fun WeightGraph(entries:List<WeightEntry>,days:Int,now:Long) {
+@Composable private fun WeightGraph(entries:List<WeightEntry>) {
     val reportModern = LocalTrailTheme.current.isModern
     val reportColors = MaterialTheme.colorScheme
     val reportBackground = if(reportModern) reportColors.background else Color.Black
@@ -205,20 +220,51 @@ internal fun weightBmiLabel(bmi: Double): String = when {
     val reportGrid = if(reportModern) reportColors.outlineVariant else Color(0xFF303640)
     val reportAccent = if(reportModern) reportColors.primary else WeightGreen
 
-    Canvas(Modifier.fillMaxWidth().height(220.dp).semantics {contentDescription="Weight in pounds over $days days; ${entries.size} readings. Values in history below."}) {
+    Canvas(Modifier.fillMaxWidth().height(220.dp).semantics {contentDescription="Weight in pounds across ${entries.size} recorded measurements. Values in history below."}) {
         val low=entries.minOf {it.weightKg*2.2046226218}-3.0
         val high=entries.maxOf {it.weightKg*2.2046226218}+3.0
-        val start=now-days*86_400_000L
+        val start=entries.minOf { it.timestampMs }; val end=entries.maxOf { it.timestampMs }.coerceAtLeast(start+1L)
         val left=36.dp.toPx();val right=size.width-14.dp.toPx();val top=18.dp.toPx();val bottom=size.height-24.dp.toPx()
-        fun x(t:Long)=left+((t-start).toDouble()/(now-start)).toFloat()*(right-left)
+        fun x(t:Long)=left+((t-start).toDouble()/(end-start)).toFloat()*(right-left)
         fun y(v:Double)=bottom-((v-low)/(high-low)).toFloat()*(bottom-top)
         drawRect(reportSurface,Offset(left,top),Size(right-left,bottom-top))
         val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply {color=reportInk.toArgb();textSize=10.sp.toPx()}
         for(i in 0..4) {val v=low+(high-low)*i/4;drawLine(reportGrid,Offset(left,y(v)),Offset(right,y(v)),1.dp.toPx());paint.textAlign=Paint.Align.RIGHT;drawContext.canvas.nativeCanvas.drawText("%.1f".format(v),left-3.dp.toPx(),y(v)+3.dp.toPx(),paint)}
         val format=SimpleDateFormat("MMM d",Locale.getDefault())
-        for(i in 0..3) {val t=start+(now-start)*i/3;drawLine(reportGrid,Offset(x(t),top),Offset(x(t),bottom),1.dp.toPx());paint.textAlign=when(i){0->Paint.Align.LEFT;3->Paint.Align.RIGHT;else->Paint.Align.CENTER};drawContext.canvas.nativeCanvas.drawText(format.format(Date(t)),x(t),bottom+18.dp.toPx(),paint)}
+        for(i in 0..3) {val t=start+(end-start)*i/3;drawLine(reportGrid,Offset(x(t),top),Offset(x(t),bottom),1.dp.toPx());paint.textAlign=when(i){0->Paint.Align.LEFT;3->Paint.Align.RIGHT;else->Paint.Align.CENTER};drawContext.canvas.nativeCanvas.drawText(format.format(Date(t)),x(t),bottom+18.dp.toPx(),paint)}
         entries.zipWithNext().forEach {(a,b)->drawLine(WeightGreen,Offset(x(a.timestampMs),y(a.weightKg*2.2046226218)),Offset(x(b.timestampMs),y(b.weightKg*2.2046226218)),2.5.dp.toPx())}
         var lastX=-1000f
         entries.forEach {e->val px=x(e.timestampMs);val py=y(e.weightKg*2.2046226218);drawCircle(reportInk,4.dp.toPx(),Offset(px,py));drawCircle(WeightGreen,2.5.dp.toPx(),Offset(px,py));if(entries.size<=8&&px-lastX>30.dp.toPx()){paint.textAlign=if(px>right-15.dp.toPx())Paint.Align.RIGHT else Paint.Align.LEFT;drawContext.canvas.nativeCanvas.drawText("%.1f".format(e.weightKg*2.2046226218),px,py-8.dp.toPx(),paint);lastX=px}}
+    }
+}
+
+@Composable private fun BodyFatGraph(readings:List<Pair<Double,Long>>) {
+    val ink = MaterialTheme.colorScheme.onSurface
+    val grid = MaterialTheme.colorScheme.outlineVariant
+    val accent = MaterialTheme.colorScheme.primary
+    Canvas(Modifier.fillMaxWidth().height(190.dp).semantics { contentDescription="Body fat percentage across ${readings.size} actual measurement dates" }) {
+        val min=(readings.minOf { it.first }-2.0).coerceAtLeast(0.0)
+        val max=(readings.maxOf { it.first }+2.0).coerceAtMost(100.0).coerceAtLeast(min+1.0)
+        val start=readings.first().second
+        val end=readings.last().second.coerceAtLeast(start+1L)
+        val left=40.dp.toPx(); val right=size.width-12.dp.toPx()
+        val top=16.dp.toPx(); val bottom=size.height-28.dp.toPx()
+        fun x(t:Long)=left+((t-start).toDouble()/(end-start)).toFloat()*(right-left)
+        fun y(v:Double)=bottom-((v-min)/(max-min)).toFloat()*(bottom-top)
+        val paint=Paint(Paint.ANTI_ALIAS_FLAG).apply { color=ink.toArgb(); textSize=10.sp.toPx() }
+        for(i in 0..3) {
+            val v=min+(max-min)*i/3
+            drawLine(grid,Offset(left,y(v)),Offset(right,y(v)),1.dp.toPx())
+            paint.textAlign=Paint.Align.RIGHT
+            drawContext.canvas.nativeCanvas.drawText("%.1f".format(v),left-4.dp.toPx(),y(v)+3.dp.toPx(),paint)
+        }
+        val dateFormat=SimpleDateFormat("MMM yy",Locale.getDefault())
+        for(i in 0..2) {
+            val t=start+(end-start)*i/2
+            paint.textAlign=when(i){0->Paint.Align.LEFT;2->Paint.Align.RIGHT;else->Paint.Align.CENTER}
+            drawContext.canvas.nativeCanvas.drawText(dateFormat.format(Date(t)),x(t),bottom+18.dp.toPx(),paint)
+        }
+        readings.zipWithNext().forEach { (a,b) -> drawLine(accent,Offset(x(a.second),y(a.first)),Offset(x(b.second),y(b.first)),2.5.dp.toPx()) }
+        readings.forEach { (value,time) -> drawCircle(accent,4.dp.toPx(),Offset(x(time),y(value))) }
     }
 }
