@@ -275,8 +275,8 @@ object GlucoseAlarmEvaluator {
         val previousSeverity = prefs.getInt(KEY_ESCALATION, if(highActive) 1 else 0)
         if (severity > previousSeverity) {
             when(severity) {
-                3 -> AlarmNotifications.notifyDanger(context, mmol, alarms.highEnabled)
-                2 -> AlarmNotifications.notifyVeryHigh(context, mmol, alarms.highEnabled)
+                3 -> AlarmNotifications.notifyDanger(context, mmol, alarms.dangerEnabled)
+                2 -> AlarmNotifications.notifyVeryHigh(context, mmol, alarms.veryHighEnabled)
                 1 -> AlarmNotifications.notifyHigh(context, mmol, highLimit, alarms.highEnabled)
             }
         }
