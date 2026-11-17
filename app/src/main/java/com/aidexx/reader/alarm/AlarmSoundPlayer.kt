@@ -308,38 +308,23 @@ object AlarmSoundPlayer {
         val context =
             currentContext ?: return
 
-        if (currentAlarmSound == AlarmSound.VERY_HIGH || currentAlarmSound == AlarmSound.DANGER) {
-            speakEscalation(context)
-            return
-        }
-        playResource(
-            context = context,
-            resourceId =
-                voiceResource(
-                    currentAlarmSound,
-                    currentVoice
-                ),
-            onComplete = {
-                if (
-                    currentContext != null
-                ) {
-                    playToneStage()
-                }
-            }
-        )
+        speakEscalation(context)
     }
 
     private fun speakEscalation(context: Context) {
         val generation = speechGeneration
-        val warning = if (currentAlarmSound == AlarmSound.DANGER)
-            "Danger! Your glucose is critically high. Check your glucose and ketones."
-        else
-            "Warning! Your glucose is very high."
-        // Offline TTS is device-dependent. Fall back to the existing recorded
-        // high-glucose warning if no speech engine or voice is available.
+        val warning = when (currentAlarmSound) {
+            AlarmSound.LOW -> "Warning! Your glucose is low."
+            AlarmSound.HIGH -> "Warning! Your glucose is high."
+            AlarmSound.VERY_HIGH -> "Warning! Your glucose is very high."
+            AlarmSound.DANGER -> "Danger! Your glucose is critically high. Check your glucose and ketones."
+            AlarmSound.DISCONNECTED -> "Warning! Your glucose sensor is disconnected."
+        }
+        // Offline TTS is device-dependent. Fall back to the matching recorded
+        // voice where available, rather than silently dropping the alarm.
         fun fallback() {
             if (generation != speechGeneration || currentContext == null) return
-            playResource(context, voiceResource(AlarmSound.HIGH, currentVoice)) {
+            playResource(context, voiceResource(currentAlarmSound, currentVoice)) {
                 if (generation == speechGeneration && currentContext != null) playToneStage()
             }
         }
@@ -361,7 +346,7 @@ object AlarmSoundPlayer {
                         else "male" in name && "female" !in name
                     } ?: voices?.firstOrNull()
                     if (selected != null) engine.voice = selected
-                    engine.setSpeechRate(if (currentAlarmSound == AlarmSound.DANGER) 0.85f else 1.0f)
+                    engine.setSpeechRate(1.0f)
                     engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                         override fun onStart(utteranceId: String?) {}
                         override fun onDone(utteranceId: String?) {
