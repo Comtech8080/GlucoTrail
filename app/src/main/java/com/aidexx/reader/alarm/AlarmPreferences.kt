@@ -19,6 +19,8 @@ enum class AlarmVoice(
 data class AlarmSettings(
     val lowEnabled: Boolean = false,
     val highEnabled: Boolean = false,
+    val veryHighEnabled: Boolean = true,
+    val dangerEnabled: Boolean = true,
     val disconnectedEnabled: Boolean = false,
     val disconnectedMinutes: Int = 5,
     val criticalOverrideEnabled: Boolean = false,
@@ -29,6 +31,8 @@ data class AlarmSettings(
         get() =
             lowEnabled ||
             highEnabled ||
+            veryHighEnabled ||
+            dangerEnabled ||
             disconnectedEnabled
 }
 
@@ -37,6 +41,8 @@ object AlarmPreferences {
 
     private const val KEY_LOW_ENABLED =
         "alarm_low_enabled"
+    private const val KEY_VERY_HIGH_ENABLED = "alarm_very_high_enabled"
+    private const val KEY_DANGER_ENABLED = "alarm_danger_enabled"
     private const val KEY_HIGH_ENABLED =
         "alarm_high_enabled"
     private const val KEY_DISCONNECTED_ENABLED =
@@ -82,6 +88,8 @@ object AlarmPreferences {
                     KEY_HIGH_ENABLED,
                     false
                 ),
+            veryHighEnabled = prefs.getBoolean(KEY_VERY_HIGH_ENABLED, true),
+            dangerEnabled = prefs.getBoolean(KEY_DANGER_ENABLED, true),
             disconnectedEnabled =
                 prefs.getBoolean(
                     KEY_DISCONNECTED_ENABLED,
@@ -124,6 +132,8 @@ object AlarmPreferences {
                 KEY_HIGH_ENABLED,
                 settings.highEnabled
             )
+            .putBoolean(KEY_VERY_HIGH_ENABLED, settings.veryHighEnabled)
+            .putBoolean(KEY_DANGER_ENABLED, settings.dangerEnabled)
             .putBoolean(
                 KEY_DISCONNECTED_ENABLED,
                 settings.disconnectedEnabled
