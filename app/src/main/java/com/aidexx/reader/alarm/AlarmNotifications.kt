@@ -269,6 +269,24 @@ object AlarmNotifications {
         )
     }
 
+    fun testVeryHigh(context: Context, criticalOverride: Boolean, alarmVoice: AlarmVoice, alarmTone: Int) {
+        createChannels(context)
+        AlarmSoundPlayer.play(context, AlarmSound.HIGH, alarmVoice, alarmTone, criticalOverride)
+        val unit = GlucoseUnitPreferences.load(context)
+        postAlarm(context, CHANNEL_VERY_HIGH, VERY_HIGH_NOTIFICATION_ID, AlarmSound.HIGH,
+            "TEST: Very high glucose alarm",
+            "This is a test of the 15.0 mmol/L (${unit.formatGlucoseFromMmol(15.0)}) alert.", false)
+    }
+
+    fun testDanger(context: Context, criticalOverride: Boolean, alarmVoice: AlarmVoice, alarmTone: Int) {
+        createChannels(context)
+        AlarmSoundPlayer.play(context, AlarmSound.HIGH, alarmVoice, alarmTone, criticalOverride)
+        val unit = GlucoseUnitPreferences.load(context)
+        postAlarm(context, CHANNEL_DANGER, DANGER_NOTIFICATION_ID, AlarmSound.HIGH,
+            "TEST: Danger zone glucose alarm",
+            "This is a test of the 20.0 mmol/L (${unit.formatGlucoseFromMmol(20.0)}) alert.", false)
+    }
+
     fun testDisconnected(
         context: Context,
         minutes: Int,
