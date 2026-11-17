@@ -9669,6 +9669,8 @@ private fun AlarmSettingsDialog(
     var highEnabled by remember(settings) {
         mutableStateOf(settings.highEnabled)
     }
+    var veryHighEnabled by remember(settings) { mutableStateOf(settings.veryHighEnabled) }
+    var dangerEnabled by remember(settings) { mutableStateOf(settings.dangerEnabled) }
     var disconnectedEnabled by remember(settings) {
         mutableStateOf(settings.disconnectedEnabled)
     }
@@ -9698,6 +9700,8 @@ private fun AlarmSettingsDialog(
     val anyEnabled =
         lowEnabled ||
         highEnabled ||
+        veryHighEnabled ||
+        dangerEnabled ||
         disconnectedEnabled
 
     val canSave =
@@ -9762,6 +9766,32 @@ private fun AlarmSettingsDialog(
                         checked = highEnabled,
                         onCheckedChange = { highEnabled = it }
                     )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Very High glucose sound alarm", fontWeight = FontWeight.Bold)
+                        Text("15.0 mmol/L (270 mg/dL). Notification remains active even when sound is off.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = veryHighEnabled, onCheckedChange = { veryHighEnabled = it })
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Danger Zone glucose sound alarm", fontWeight = FontWeight.Bold)
+                        Text("20.0 mmol/L (360 mg/dL). Notification remains active even when sound is off.",
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    Switch(checked = dangerEnabled, onCheckedChange = { dangerEnabled = it })
                 }
 
                 Row(
@@ -9859,7 +9889,7 @@ private fun AlarmSettingsDialog(
                 )
 
                 Text(
-                    "Choose the voice used for High Sugar, Low Sugar, and Sensor Disconnected announcements.",
+                    "Choose the voice used for glucose alarms and sensor disconnection. Very High and Danger currently use the existing High Sugar spoken message.",
                     style =
                         MaterialTheme.typography.bodySmall,
                     color =
@@ -10104,6 +10134,20 @@ private fun AlarmSettingsDialog(
 
                 OutlinedButton(
                     onClick = {
+                        AlarmNotifications.testVeryHigh(context, criticalOverrideEnabled, alarmVoice, alarmTone)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Test Very High Alarm (15+)") }
+
+                OutlinedButton(
+                    onClick = {
+                        AlarmNotifications.testDanger(context, criticalOverrideEnabled, alarmVoice, alarmTone)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Test Danger Zone Alarm (20+)") }
+
+                OutlinedButton(
+                    onClick = {
                         AlarmNotifications.testDisconnected(
                             context,
                             disconnectMinutes ?: 5,
@@ -10138,6 +10182,8 @@ private fun AlarmSettingsDialog(
                         AlarmSettings(
                             lowEnabled = lowEnabled,
                             highEnabled = highEnabled,
+                            veryHighEnabled = veryHighEnabled,
+                            dangerEnabled = dangerEnabled,
                             disconnectedEnabled =
                                 disconnectedEnabled,
                             disconnectedMinutes =
