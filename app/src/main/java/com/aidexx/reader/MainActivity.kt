@@ -9889,7 +9889,7 @@ private fun AlarmSettingsDialog(
                 )
 
                 Text(
-                    "Choose the voice used for glucose alarms and sensor disconnection. Very High and Danger currently use the existing High Sugar spoken message.",
+                    "Choose the voice used for glucose alarms and sensor disconnection. Very High and Danger speak distinct warnings using Android text-to-speech. The available voice may depend on your phone.",
                     style =
                         MaterialTheme.typography.bodySmall,
                     color =
