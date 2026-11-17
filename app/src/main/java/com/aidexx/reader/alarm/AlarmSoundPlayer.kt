@@ -10,12 +10,17 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.VibrationEffect
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
+import java.util.Locale
 import android.os.Vibrator
 import android.os.VibratorManager
 import com.aidexx.reader.R
 
 enum class AlarmSound {
     HIGH,
+    VERY_HIGH,
+    DANGER,
     LOW,
     DISCONNECTED
 }
@@ -31,6 +36,9 @@ object AlarmSoundPlayer {
 
     private var player:
         MediaPlayer? = null
+
+    private var speech: TextToSpeech? = null
+    private var speechGeneration = 0
 
     private var previousAlarmVolume:
         Int? = null
@@ -216,6 +224,10 @@ object AlarmSoundPlayer {
             )
 
         releasePlayer()
+        speechGeneration++
+        speech?.stop()
+        speech?.shutdown()
+        speech = null
 
         cancelVibration(
             context
@@ -296,6 +308,10 @@ object AlarmSoundPlayer {
         val context =
             currentContext ?: return
 
+        if (currentAlarmSound == AlarmSound.VERY_HIGH || currentAlarmSound == AlarmSound.DANGER) {
+            speakEscalation(context)
+            return
+        }
         playResource(
             context = context,
             resourceId =
@@ -311,6 +327,58 @@ object AlarmSoundPlayer {
                 }
             }
         )
+    }
+
+    private fun speakEscalation(context: Context) {
+        val generation = speechGeneration
+        val warning = if (currentAlarmSound == AlarmSound.DANGER)
+            "Danger! Your glucose is critically high. Check your glucose and ketones."
+        else
+            "Warning! Your glucose is very high."
+        // Offline TTS is device-dependent. Fall back to the existing recorded
+        // high-glucose warning if no speech engine or voice is available.
+        fun fallback() {
+            if (generation != speechGeneration || currentContext == null) return
+            playResource(context, voiceResource(AlarmSound.HIGH, currentVoice)) {
+                if (generation == speechGeneration && currentContext != null) playToneStage()
+            }
+        }
+        try {
+            speech = TextToSpeech(context) { status ->
+                handler.post {
+                    if (generation != speechGeneration || currentContext == null) return@post
+                    val engine = speech
+                    if (status != TextToSpeech.SUCCESS || engine == null) {
+                        fallback()
+                        return@post
+                    }
+                    engine.setAudioAttributes(audioAttributes)
+                    engine.language = Locale.ENGLISH
+                    val voices = engine.voices?.filter { it.locale.language == "en" && !it.isNetworkConnectionRequired }
+                    val selected = voices?.firstOrNull { voice ->
+                        val name = voice.name.lowercase(Locale.ROOT)
+                        if (currentVoice == AlarmVoice.FEMALE) "female" in name || "fem" in name
+                        else "male" in name && "female" !in name
+                    } ?: voices?.firstOrNull()
+                    if (selected != null) engine.voice = selected
+                    engine.setSpeechRate(if (currentAlarmSound == AlarmSound.DANGER) 0.85f else 1.0f)
+                    engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                        override fun onStart(utteranceId: String?) {}
+                        override fun onDone(utteranceId: String?) {
+                            handler.post { if (generation == speechGeneration && currentContext != null) playToneStage() }
+                        }
+                        @Deprecated("Deprecated in Java")
+                        override fun onError(utteranceId: String?) {
+                            handler.post { fallback() }
+                        }
+                    })
+                    val result = engine.speak(warning, TextToSpeech.QUEUE_FLUSH, null, "glucotrail-escalation")
+                    if (result == TextToSpeech.ERROR) fallback()
+                }
+            }
+        } catch (_: Exception) {
+            fallback()
+        }
     }
 
     private fun playResource(
@@ -547,6 +615,12 @@ object AlarmSoundPlayer {
             when (
                 alarmSound
             ) {
+                AlarmSound.VERY_HIGH ->
+                    longArrayOf(0, 550, 100, 550, 100, 550, 180, 750)
+
+                AlarmSound.DANGER ->
+                    longArrayOf(0, 950, 100, 950, 100, 950, 100, 950)
+
                 AlarmSound.HIGH ->
                     longArrayOf(
                         0,
