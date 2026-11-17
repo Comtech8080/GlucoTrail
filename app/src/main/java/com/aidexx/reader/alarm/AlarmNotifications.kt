@@ -16,11 +16,15 @@ object AlarmNotifications {
     const val LOW_NOTIFICATION_ID = 7001
     const val HIGH_NOTIFICATION_ID = 7002
     const val DISCONNECTED_NOTIFICATION_ID = 7003
+    const val VERY_HIGH_NOTIFICATION_ID = 7004
+    const val DANGER_NOTIFICATION_ID = 7005
 
     private const val CHANNEL_MONITOR = "aidexx_monitor"
     private const val CHANNEL_LOW = "aidexx_low_glucose_v3"
     private const val CHANNEL_HIGH = "aidexx_high_glucose_v3"
     private const val CHANNEL_DISCONNECTED = "aidexx_disconnected_v3"
+    private const val CHANNEL_VERY_HIGH = "glucotrail_very_high_v1"
+    private const val CHANNEL_DANGER = "glucotrail_danger_v1"
 
     fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -76,8 +80,22 @@ object AlarmNotifications {
             setBypassDnd(canBypassDnd)
         }
 
+        val veryHigh = NotificationChannel(CHANNEL_VERY_HIGH, "Very high glucose alarms", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Glucose at or above 15.0 mmol/L."
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setBypassDnd(canBypassDnd)
+        }
+        val danger = NotificationChannel(CHANNEL_DANGER, "Danger zone glucose alarms", NotificationManager.IMPORTANCE_HIGH).apply {
+            description = "Glucose at or above 20.0 mmol/L."
+            enableVibration(false)
+            setSound(null, null)
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setBypassDnd(canBypassDnd)
+        }
         manager.createNotificationChannels(
-            listOf(monitor, low, high, disconnected)
+            listOf(monitor, low, high, disconnected, veryHigh, danger)
         )
     }
 
@@ -141,6 +159,40 @@ object AlarmNotifications {
             text = "${unit.formatGlucoseFromMmol(mmol)} is at or above your ${unit.formatGlucoseFromMmol(limit)} high limit.",
             playSound = playSound
         )
+    }
+
+    fun notifyVeryHigh(context: Context, mmol: Double, playSound: Boolean) {
+        val unit = GlucoseUnitPreferences.load(context)
+        postAlarm(
+            context = context,
+            channel = CHANNEL_VERY_HIGH,
+            notificationId = VERY_HIGH_NOTIFICATION_ID,
+            alarmSound = AlarmSound.HIGH,
+            title = "Very high glucose",
+            text = "${unit.formatGlucoseFromMmol(mmol)}. Glucose has reached 15.0 mmol/L or higher. Verify the reading.",
+            playSound = playSound
+        )
+    }
+
+    fun notifyDanger(context: Context, mmol: Double, playSound: Boolean) {
+        val unit = GlucoseUnitPreferences.load(context)
+        postAlarm(
+            context = context,
+            channel = CHANNEL_DANGER,
+            notificationId = DANGER_NOTIFICATION_ID,
+            alarmSound = AlarmSound.HIGH,
+            title = "DANGER ZONE: Very high glucose",
+            text = "${unit.formatGlucoseFromMmol(mmol)}. Glucose is at least 20.0 mmol/L. Confirm with a fingerstick, check ketones, and seek urgent care if unwell.",
+            playSound = playSound
+        )
+    }
+
+    fun clearVeryHigh(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(VERY_HIGH_NOTIFICATION_ID)
+    }
+
+    fun clearDanger(context: Context) {
+        context.getSystemService(NotificationManager::class.java).cancel(DANGER_NOTIFICATION_ID)
     }
 
     fun notifyDisconnected(
