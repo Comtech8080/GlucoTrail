@@ -167,7 +167,7 @@ object AlarmNotifications {
             context = context,
             channel = CHANNEL_VERY_HIGH,
             notificationId = VERY_HIGH_NOTIFICATION_ID,
-            alarmSound = AlarmSound.HIGH,
+            alarmSound = AlarmSound.VERY_HIGH,
             title = "Very high glucose",
             text = "${unit.formatGlucoseFromMmol(mmol)}. Glucose has reached 15.0 mmol/L or higher. Verify the reading.",
             playSound = playSound
@@ -180,7 +180,7 @@ object AlarmNotifications {
             context = context,
             channel = CHANNEL_DANGER,
             notificationId = DANGER_NOTIFICATION_ID,
-            alarmSound = AlarmSound.HIGH,
+            alarmSound = AlarmSound.DANGER,
             title = "DANGER ZONE: Very high glucose",
             text = "${unit.formatGlucoseFromMmol(mmol)}. Glucose is at least 20.0 mmol/L. Confirm with a fingerstick, check ketones, and seek urgent care if unwell.",
             playSound = playSound
@@ -271,18 +271,18 @@ object AlarmNotifications {
 
     fun testVeryHigh(context: Context, criticalOverride: Boolean, alarmVoice: AlarmVoice, alarmTone: Int) {
         createChannels(context)
-        AlarmSoundPlayer.play(context, AlarmSound.HIGH, alarmVoice, alarmTone, criticalOverride)
+        AlarmSoundPlayer.play(context, AlarmSound.VERY_HIGH, alarmVoice, alarmTone, criticalOverride)
         val unit = GlucoseUnitPreferences.load(context)
-        postAlarm(context, CHANNEL_VERY_HIGH, VERY_HIGH_NOTIFICATION_ID, AlarmSound.HIGH,
+        postAlarm(context, CHANNEL_VERY_HIGH, VERY_HIGH_NOTIFICATION_ID, AlarmSound.VERY_HIGH,
             "TEST: Very high glucose alarm",
             "This is a test of the 15.0 mmol/L (${unit.formatGlucoseFromMmol(15.0)}) alert.", false)
     }
 
     fun testDanger(context: Context, criticalOverride: Boolean, alarmVoice: AlarmVoice, alarmTone: Int) {
         createChannels(context)
-        AlarmSoundPlayer.play(context, AlarmSound.HIGH, alarmVoice, alarmTone, criticalOverride)
+        AlarmSoundPlayer.play(context, AlarmSound.DANGER, alarmVoice, alarmTone, criticalOverride)
         val unit = GlucoseUnitPreferences.load(context)
-        postAlarm(context, CHANNEL_DANGER, DANGER_NOTIFICATION_ID, AlarmSound.HIGH,
+        postAlarm(context, CHANNEL_DANGER, DANGER_NOTIFICATION_ID, AlarmSound.DANGER,
             "TEST: Danger zone glucose alarm",
             "This is a test of the 20.0 mmol/L (${unit.formatGlucoseFromMmol(20.0)}) alert.", false)
     }
