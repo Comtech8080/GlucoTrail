@@ -301,6 +301,17 @@ class AidexHistoryDatabase(private val context: Context) : SQLiteOpenHelper(
         if (!exists) db.execSQL("ALTER TABLE note_health ADD COLUMN body_fat_percent REAL CHECK(body_fat_percent IS NULL OR body_fat_percent BETWEEN 0 AND 100)")
     }
 
+    fun loadBodyFatReadings(atMs: Long): List<Pair<Double, Long>> {
+        val readings = ArrayList<Pair<Double, Long>>()
+        readableDatabase.rawQuery("""SELECT h.body_fat_percent,n.timestamp_ms
+            FROM note_health h JOIN glucose_notes n ON n.id=h.note_id
+            WHERE h.body_fat_percent IS NOT NULL AND n.timestamp_ms <= ?
+            ORDER BY n.timestamp_ms ASC,n.id ASC""", arrayOf(atMs.toString())).use { c ->
+            while(c.moveToNext()) readings += c.getDouble(0) to c.getLong(1)
+        }
+        return readings
+    }
+
     fun loadLatestBodyFat(atMs: Long): Pair<Double, Long>? {
         readableDatabase.rawQuery("""SELECT h.body_fat_percent,n.timestamp_ms
             FROM note_health h JOIN glucose_notes n ON n.id=h.note_id
