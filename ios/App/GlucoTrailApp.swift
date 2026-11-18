@@ -47,7 +47,7 @@ struct ContentView: View {
         NavigationStack {
             List {
                 Section {
-                    Text("Foreground reception only. No glucose alarms or background monitoring. Keep using your established monitoring app for care decisions.")
+                    Text("Glucose reception requires the foreground. Optional alerts and experimental connection recovery are in Settings. Keep using your established monitoring system for care decisions.")
                         .font(.subheadline)
                     if demo { Label("Demo is on — Bluetooth stopped", systemImage: "play.rectangle").foregroundStyle(.orange) }
                 }
@@ -108,9 +108,13 @@ struct ContentView: View {
                     Text("Manufacturer packets received: \(scanner.packetCount)")
                     Button("Forget both sensor roles", role: .destructive) { scanner.clear() }
                 }
+                Section("Notifications") {
+                    NavigationLink("Alerts & safety") { AlertSettingsView(scanner: scanner, alerts: scanner.alerts, demo: demo) }
+                        .accessibilityIdentifier("alertsSettings")
+                }
                 Section("About") {
-                    Text("GlucoTrail iOS · 0.4.0 (4)")
-                    Text("Phase 3: dual-sensor replacement. Encrypted GATT readings, background monitoring and alarms are not enabled. No TestFlight build is available yet.")
+                    Text("GlucoTrail iOS · 0.5.0 (5)")
+                    Text("Phase 4: configurable notifications and experimental connection recovery. Continuous background glucose and encrypted GATT remain unavailable. No TestFlight build is available yet.")
                     Link("GlucoTrail on GitHub", destination: URL(string: "https://github.com/Comtech8080/GlucoTrail")!)
                 }
             }.navigationTitle("Settings")

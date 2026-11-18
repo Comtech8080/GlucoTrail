@@ -1,6 +1,36 @@
 import XCTest
 
 final class GlucoTrailUITests: XCTestCase {
+    func testAlertPreviewsNeverEnableRealNotifications() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo"]
+        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        let link = app.buttons["alertsSettings"]
+        for _ in 0..<4 where !link.isHittable { app.swipeUp() }
+        link.tap()
+        XCTAssertTrue(app.staticTexts["notificationPermission"].waitForExistence(timeout: 5))
+        app.buttons["alertPreviewLink"].tap()
+        for (button, expected) in [("previewLow", "low"), ("previewHigh", "high"), ("previewStale", "stale"), ("previewDisconnected", "disconnected")] {
+            app.buttons[button].tap()
+            XCTAssertEqual(app.staticTexts["alertPreviewResult"].label, "DEMO · \(expected) request eligible")
+        }
+        for button in ["previewDelayed", "previewStopped"] {
+            app.buttons[button].tap()
+            XCTAssertEqual(app.staticTexts["alertPreviewResult"].label, "DEMO · No alert eligible")
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 4 isolated alert preview"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let state = app.staticTexts["alertsEnabledState"]
+        for _ in 0..<4 where !state.isHittable { app.swipeUp() }
+        XCTAssertEqual(state.label, "Alerts: OFF")
+        XCTAssertFalse(app.buttons["alertEnableButton"].isEnabled)
+        let empty = app.staticTexts["emptyAlertHistory"]
+        for _ in 0..<8 where !empty.isHittable { app.swipeUp() }
+        XCTAssertTrue(empty.exists)
+    }
+
     func testSimulatedReplacementHandoverIsIsolated() {
         let app = XCUIApplication()
         app.launchArguments = ["--demo"]

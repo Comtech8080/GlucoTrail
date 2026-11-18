@@ -67,7 +67,7 @@ struct ReplacementView: View {
                     } else if state.primary == nil {
                         Text("Select your primary sensor in the Sensor tab first.")
                     }
-                    Text(demo ? "This simulated handover affects the replacement preview only. Real sensor roles and the dashboard demo stay unchanged." : "Handover changes which sensor supplies the dashboard. It does not activate a sensor or change its readings. No background monitoring or glucose alarms are provided.")
+                    Text(demo ? "This simulated handover affects the replacement preview only. Real sensor roles and the dashboard demo stay unchanged." : "Handover changes which sensor supplies the dashboard. It does not activate a sensor or change its readings. Alert eligibility restarts and requires new primary readings. Continuous background glucose is unavailable.")
                         .font(.caption).foregroundStyle(.secondary)
                     Divider()
                     Text("Sensor overlap").font(.title2.bold())

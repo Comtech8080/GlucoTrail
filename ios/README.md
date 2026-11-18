@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 3 dual-sensor replacement
+# GlucoTrail iOS — Phase 4 notifications and safety validation
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -6,6 +6,11 @@ The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; gener
 projects are intentionally untracked. Both build services run the same build script.
 
 ## Implemented
+
+- Configurable, opt-in local notifications and protected alert history under Settings →
+  Alerts & safety. Read [Phase 4 behavior and physical validation](PHASE4.md) before use.
+- Optional experimental background connection restoration/recovery. Glucose reception
+  remains foreground-only; no reliable continuous background alarm claim is made.
 
 - Foreground CoreBluetooth discovery of service 181F and strict AiDEX X serial selection.
 - Explicit selection persists primary/replacement UUIDs and serials in an atomic local file.
@@ -108,68 +113,110 @@ Write/read errors are shown in the app. A failed insert can be retried on a late
 - Lines break at missing minutes, >=5-minute receipt gaps, identity changes and clock
   discontinuities. Single readings remain visible. No smoothing or fabricated backfill.
 - At five minutes without a new reading, the displayed value is stale. Stopped reception,
-  rejected packets and restored history cannot become current because of a duplicate.
-  Historical trend arrows are labelled as the trend at the last reading.
-- Demo data is generated in memory with its own labelled identity. Enabling demo stops
-  Bluetooth. It never writes to the glucose database; disabling it does not restart BLE.
-- History is retained locally without automatic purging; the directory uses iOS complete
-  file protection and is excluded from backups. Uninstalling the app removes this history.
-  Forgetting the connection identity does not delete past readings.
-- Bluetooth connection status is separate from advertisement reception and data age.
-  Encrypted GATT remains disabled; this phase adds no sensor commands or background modes.
+  rejected packets and re…1201 tokens truncated…        app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        let link = app.buttons["alertsSettings"]
+        for _ in 0..<4 where !link.isHittable { app.swipeUp() }
+        link.tap()
+        XCTAssertTrue(app.staticTexts["notificationPermission"].waitForExistence(timeout: 5))
+        app.buttons["alertPreviewLink"].tap()
+        for (button, expected) in [("previewLow", "low"), ("previewHigh", "high"), ("previewStale", "stale"), ("previewDisconnected", "disconnected")] {
+            app.buttons[button].tap()
+            XCTAssertEqual(app.staticTexts["alertPreviewResult"].label, "DEMO · \(expected) request eligible")
+        }
+        for button in ["previewDelayed", "previewStopped"] {
+            app.buttons[button].tap()
+            XCTAssertEqual(app.staticTexts["alertPreviewResult"].label, "DEMO · No alert eligible")
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 4 isolated alert preview"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let state = app.staticTexts["alertsEnabledState"]
+        for _ in 0..<4 where !state.isHittable { app.swipeUp() }
+        XCTAssertEqual(state.label, "Alerts: OFF")
+        XCTAssertFalse(app.buttons["alertEnableButton"].isEnabled)
+        let empty = app.staticTexts["emptyAlertHistory"]
+        for _ in 0..<8 where !empty.isHittable { app.swipeUp() }
+        XCTAssertTrue(empty.exists)
+    }
 
-Run `bash ios/scripts/test-ui.sh` after project generation for the iPhone Simulator
-smoke test. Both build services run it; its result bundle includes a dashboard screenshot.
-Swift tests cover database reopen/deduplication, isolated identities, schema/corruption
-handling, write-lock failure/retry, all chart windows, gaps, freshness and trend bands.
+    func testSimulatedReplacementHandoverIsIsolated() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo"]
+        app.launch()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertTrue(app.staticTexts["pairPrimary"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["pairPrimary"].label.contains("DEMO000001"))
+        XCTAssertTrue(app.staticTexts["pairReplacement"].label.contains("DEMO000002"))
+        XCTAssertEqual(app.staticTexts["replacementReadiness"].label, "Ready for handover")
+        let modes = app.segmentedControls["overlapMode"]
+        for mode in ["Primary", "Replacement", "Compare"] {
+            for _ in 0..<4 where !modes.isHittable { app.swipeUp() }
+            modes.buttons[mode].tap()
+            XCTAssertTrue(modes.buttons[mode].isSelected)
+        }
+        XCTAssertTrue(app.otherElements["overlapChart"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 3 sensor overlap"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        let handover = app.buttons["handoverButton"]
+        for _ in 0..<4 where !handover.isHittable { app.swipeDown() }
+        handover.tap()
+        app.buttons["Confirm handover"].tap()
+        let switched = NSPredicate(format: "label CONTAINS %@", "DEMO000002")
+        expectation(for: switched, evaluatedWith: app.staticTexts["pairPrimary"])
+        waitForExpectations(timeout: 5)
+        XCTAssertEqual(app.staticTexts["pairReplacement"].label, "Replacement: None")
+        app.tabBars.buttons["Dashboard"].tap()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertTrue(app.staticTexts["pairPrimary"].label.contains("DEMO000002"))
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["demoButton"].tap()
+        app.tabBars.buttons["Replacement"].tap()
+        XCTAssertEqual(app.staticTexts["pairPrimary"].label, "Primary: None")
+        XCTAssertEqual(app.staticTexts["pairReplacement"].label, "Replacement: None")
+    }
 
-## Phase 3: replacement and overlap
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
 
-Version 0.4.0 adds two independently reconnecting sensor roles. Adding a replacement
-keeps the primary connection and records both validated advertisement streams in the
-existing SQLite history. The Replacement tab provides primary/replacement/combined
-graphs, raw differences and an optional, unsaved meter-reference comparison. No
-calibration, glucose correction or sensor command is performed.
-
-Manual handover requires three consecutive new sensor minutes after minute 60,
-received no more than 90 seconds apart, with the latest less than 120 seconds old.
-Readiness is rechecked at confirmation. Automatic handover is OFF by default and
-must be explicitly enabled for the current foreground session. It additionally
-requires a primary reading accepted in that uninterrupted session, followed by
-15 minutes without a new primary reading. This is an application policy, not a
-validated expiry detector or a clinically validated switching rule.
-
-Stop, backgrounding, Bluetooth loss, relaunch, backward clock movement or a timer
-gap over 90 seconds clears eligibility and automatic consent. Duplicate and older
-minutes cannot restore readiness. A failed role save leaves roles unchanged and
-disarms automatic handover. Each sensor has an independent bounded connection retry
-state. Old callbacks cannot promote an unselected sensor.
-
-Roles and the last 200 transitions are saved together by atomic replacement in
-sensor-pair.json in the protected, backup-excluded history directory. Phase 1's
-saved identity migrates to primary. Corrupt files are reported without erasure.
-Switching or forgetting roles preserves both sensors' histories. After handover,
-overlap graphs retain the previous and new primary streams.
-
-Live comparison requires both post-warm-up readings to be less than five minutes
-old and received within two minutes of one another. Meter references are neither
-saved nor sent to the sensor. Demo handovers use memory-only identities and never
-change real roles or history. Android code and the BLE protocol boundary are unchanged:
-encrypted GATT, activation, background monitoring and alarms remain unavailable.
-
-Tests cover readiness, stale/replayed packets, interrupted sessions, auto-handover
-timing, independent reconnect state, atomic persistence and raw comparisons. UI tests
-exercise demo overlap modes, handover and isolation from real roles. Existing GitHub
-Actions and Codemagic workflows run the expanded tests and unsigned builds. Unsigned
-artifacts cannot be installed directly on an iPhone; signing is still required.
-
-Before physical use, test with two already activated sensors: verify both serials,
-compare raw advertisements with Android, interrupt each connection independently,
-exercise Stop/Start, Bluetooth off/on and background/foreground, verify no automatic
-handover across these interruptions, then test manual and explicitly enabled automatic
-handover while observing both devices. Confirm histories survive relaunch. Simulator
-tests do not validate real radio reception, sensor accuracy or clinical suitability.
-
-Physical acceptance still required: verify saved Android-comparable readings across app
-relaunch, sensor selection, Bluetooth interruptions, midnight/daylight-saving changes,
-unit changes and large accessibility text. Simulator tests do not prove sensor reception.
+    func testDemoDashboardRangesHistoryAndUnits() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--demo"]
+        app.launch()
+        XCTAssertTrue(app.staticTexts["demoBanner"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["latestGlucose"].exists)
+        let initialValue = app.staticTexts["latestGlucose"].label
+        for hours in [2, 4, 6, 12, 24, 48, 72] {
+            app.buttons["graphRange"].tap()
+            app.buttons["\(hours) hours"].tap()
+            XCTAssertTrue(app.staticTexts["graphWindowLabel"].label.contains("\(hours)-hour"))
+        }
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 2 dashboard — 72 hours"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["DEMO · sample history only"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.datePickers.firstMatch.exists)
+        app.tabBars.buttons["Settings"].tap()
+        let units = app.segmentedControls["unitPicker"]
+        XCTAssertTrue(units.waitForExistence(timeout: 5))
+        let alternateUnit = initialValue.contains(".") ? "mg/dL" : "mmol/L"
+        units.buttons[alternateUnit].tap()
+        XCTAssertTrue(units.buttons[alternateUnit].isSelected)
+        app.tabBars.buttons["Dashboard"].tap()
+        XCTAssertNotEqual(app.staticTexts["latestGlucose"].label, initialValue)
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["demoButton"].tap()
+        XCTAssertTrue(app.buttons["Show demo data"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Dashboard"].tap()
+        XCTAssertTrue(app.staticTexts["No glucose reading yet"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["demoBanner"].exists)
+        app.tabBars.buttons["History"].tap()
+        XCTAssertTrue(app.staticTexts["No readings for this sensor and date."].waitForExistence(timeout: 5))
+    }
+}
