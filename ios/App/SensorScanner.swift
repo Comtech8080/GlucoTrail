@@ -142,6 +142,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             _ = sessions[id]?.begin(at: Date())
             if peripheral.state == .connected {
                 _ = sessions[id]?.connected(id, at: Date())
+                if id == selectedID { alerts.connectionChanged(true) }
                 peripheral.discoverServices([service])
             } else if peripheral.state != .connecting { sessions[id]?.suspend() }
         }
@@ -430,6 +431,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             return
         }
         peripheral.delegate = self
+        if peripheral.identifier == selectedID { alerts.connectionChanged(true) }
         peripheral.discoverServices([service])
         tick()
     }
