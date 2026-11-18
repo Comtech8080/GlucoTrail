@@ -177,3 +177,12 @@ public enum BackgroundRecoveryPolicy {
     }
     public static func mayReadGlucose(foreground: Bool, requested: Bool) -> Bool { foreground && requested }
 }
+
+public extension DemoHistory {
+    /// A labelled in-memory fixture, never a decoded sensor packet.
+    static func alertRecord(low: Bool, at date: Date) -> GlucoseRecord {
+        let identity = try! SensorIdentity(peripheralID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, serial: "DEMO000001")
+        return GlucoseRecord(identity: identity, reading: SensorReading(minute: 60,
+            glucoseMgDl: low ? 60 : 200, trendRaw: 0, quality: 100, previousMgDl: nil, previous2MgDl: nil), receivedAt: date)
+    }
+}

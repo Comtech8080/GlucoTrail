@@ -61,6 +61,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
 
     override init() {
         super.init()
+        recoveryStatus = backgroundRecovery ? "Experimental connection recovery enabled; background glucose is unavailable" : "Background recovery is off"
         do {
             var folder = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("GlucoseHistory", isDirectory: true)

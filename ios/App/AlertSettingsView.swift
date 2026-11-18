@@ -108,15 +108,13 @@ struct AlertPreviewView: View {
     }
     private func preview(_ kind: AlertKind, delayed: Bool = false, stopped: Bool = false) {
         let now = Date()
-        let identity = try! SensorIdentity(peripheralID: UUID(), serial: "DEMO000001")
+        let record = DemoHistory.alertRecord(low: kind == .low, at: now)
         var settings = AlertSettings(); settings.enabled = true
         settings.lowEnabled = kind == .low; settings.highEnabled = kind == .high
         settings.staleEnabled = kind == .stale; settings.disconnectedEnabled = kind == .disconnected
-        var policy = AlertPolicy(settings: settings); policy.start(primary: identity, at: now)
+        var policy = AlertPolicy(settings: settings); policy.start(primary: record.identity, at: now)
         if kind == .low || kind == .high {
-            let reading = SensorReading(minute: 60, glucoseMgDl: kind == .low ? 60 : 200, trendRaw: 0,
-                quality: 100, previousMgDl: nil, previous2MgDl: nil)
-            policy.accept(GlucoseRecord(identity: identity, reading: reading, receivedAt: now), now: now)
+            policy.accept(record, now: now)
         }
         if stopped { policy.stop() }
         let plans = policy.plans(at: now.addingTimeInterval(delayed ? 121 : 0))
