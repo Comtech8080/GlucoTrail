@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 3 dual-sensor replacement
+# GlucoTrail iOS — Phase 4 notifications and safety validation
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -6,6 +6,11 @@ The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; gener
 projects are intentionally untracked. Both build services run the same build script.
 
 ## Implemented
+
+- Configurable, opt-in local notifications and protected alert history under Settings →
+  Alerts & safety. Read [Phase 4 behavior and physical validation](PHASE4.md) before use.
+- Optional experimental background connection restoration/recovery. Glucose reception
+  remains foreground-only; no reliable continuous background alarm claim is made.
 
 - Foreground CoreBluetooth discovery of service 181F and strict AiDEX X serial selection.
 - Explicit selection persists primary/replacement UUIDs and serials in an atomic local file.

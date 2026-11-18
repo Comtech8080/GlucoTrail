@@ -1,6 +1,7 @@
 import CoreBluetooth
 import Foundation
 import Combine
+import UIKit
 import GlucoTrailProtocol
 
 struct NearbySensor: Identifiable {
@@ -17,6 +18,9 @@ struct NearbySensor: Identifiable {
 /// Main-queue adapter. Radio connection is deliberately separate from glucose validation.
 /// Phase 1 discovers the GATT profile but sends no authentication/activation writes.
 final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+    let alerts = AlertController()
+    @Published private(set) var backgroundRecovery = UserDefaults.standard.bool(forKey: "glucotrail.backgroundRecovery")
+    @Published private(set) var recoveryStatus = "Background recovery is off"
     @Published private(set) var sensors: [NearbySensor] = []
     @Published private(set) var status = "Tap Start scan to enable Bluetooth discovery."
     @Published private(set) var connectionStatus = "Not connected"
@@ -49,7 +53,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     private let store = SensorIdentityStore()
     private var timer: Timer?
     private var requested = false
-    private var foreground = true
+    private var foreground = UIApplication.shared.applicationState == .active
     // Cancellation is asynchronous. Never start another attempt on a peripheral
     // until its cancellation callback has drained, including after Stop/Start.
     private var cancelling = Set<UUID>()
@@ -57,6 +61,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
 
     override init() {
         super.init()
+        recoveryStatus = backgroundRecovery ? "Experimental connection recovery enabled; background glucose is unavailable" : "Background recovery is off"
         do {
             var folder = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
                 .appendingPathComponent("GlucoseHistory", isDirectory: true)
@@ -79,6 +84,72 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             historyIdentities = try history!.identities()
             restoreLatest()
         } catch { storageError = "Local history is unavailable. Existing data was not erased. \(error)" }
+        if !ProcessInfo.processInfo.arguments.contains("--demo"), UserDefaults.standard.bool(forKey: "glucotrail.centralCreated") {
+            requested = backgroundRecovery && UserDefaults.standard.bool(forKey: "glucotrail.recoveryRequested") && history != nil && savedIdentity != nil
+            reconcileSessions()
+            if requested { alerts.start(primary: savedIdentity); installTimer() }
+            createCentral()
+        }
+    }
+
+    private func createCentral() {
+        guard central == nil else { return }
+        UserDefaults.standard.set(true, forKey: "glucotrail.centralCreated")
+        central = CBCentralManager(delegate: self, queue: .main,
+            options: [CBCentralManagerOptionRestoreIdentifierKey: "com.glucotrail.primary-and-replacement"])
+    }
+    private func installTimer() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
+    }
+    func configureAlerts(_ settings: AlertSettings) {
+        if alerts.configure(settings), requested { alerts.start(primary: savedIdentity) }
+    }
+    func setBackgroundRecovery(_ enabled: Bool) {
+        backgroundRecovery = enabled
+        UserDefaults.standard.set(enabled, forKey: "glucotrail.backgroundRecovery")
+        UserDefaults.standard.set(enabled && requested, forKey: "glucotrail.recoveryRequested")
+        recoveryStatus = enabled ? "Experimental connection recovery enabled; background glucose is unavailable" : "Background recovery is off"
+        if !foreground && !enabled {
+            for id in sessions.keys { sessions[id]?.suspend() }
+            cancelConnections()
+        }
+    }
+    private func mayRecover(_ id: UUID) -> Bool {
+        BackgroundRecoveryPolicy.mayRecover(enabled: backgroundRecovery, requested: requested,
+            storageAvailable: history != nil && storageError == nil, identity: id, selected: monitoredIDs)
+    }
+    private func recoverConnections() {
+        guard !foreground, let central, central.state == .poweredOn else { return }
+        for identity in monitoredIdentities where mayRecover(identity.peripheralID) {
+            let id = identity.peripheralID
+            guard !cancelling.contains(id), let peripheral = peripherals[id] ?? central.retrievePeripherals(withIdentifiers: [id]).first,
+                  sessions[id]?.begin(at: Date()) == id else { continue }
+            peripherals[id] = peripheral; peripheral.delegate = self
+            central.connect(peripheral, options: nil)
+            recoveryStatus = "Background connection requested; glucose reception requires the foreground"
+        }
+    }
+
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String: Any]) {
+        for peripheral in dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] ?? [] {
+            let id = peripheral.identifier
+            guard mayRecover(id), let identity = monitoredIdentities.first(where: { $0.peripheralID == id }) else {
+                central.cancelPeripheralConnection(peripheral); continue
+            }
+            peripherals[id] = peripheral; peripheral.delegate = self
+            sessions[id] = ConnectionSession(); sessions[id]?.start(identity)
+            _ = sessions[id]?.begin(at: Date())
+            if peripheral.state == .connected {
+                _ = sessions[id]?.connected(id, at: Date())
+                if id == selectedID { alerts.connectionChanged(true) }
+                peripheral.discoverServices([service])
+            } else if peripheral.state != .connecting { sessions[id]?.suspend() }
+        }
+        invalidateReadings()
+        recoveryStatus = "Bluetooth state restored; waiting for new foreground readings"
+        central.stopScan()
+        recoverConnections()
     }
 
     func historyRecords(for identity: SensorIdentity, from start: Date, through end: Date) throws -> [GlucoseRecord] {
@@ -102,16 +173,19 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     func start() {
         guard !requested else { updateScan(); return }
         requested = true
+        UserDefaults.standard.set(backgroundRecovery, forKey: "glucotrail.recoveryRequested")
+        alerts.start(primary: savedIdentity)
         pairMonitor.beginMonitoring()
         reconcileSessions()
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in self?.tick() }
-        if central == nil { central = CBCentralManager(delegate: self, queue: .main) }
+        installTimer()
+        if central == nil { createCentral() }
         else { updateScan() }
     }
 
     func stop() {
         requested = false
+        UserDefaults.standard.set(false, forKey: "glucotrail.recoveryRequested")
+        alerts.stop()
         invalidateReadings()
         for id in sessions.keys { sessions[id]?.stop() }
         timer?.invalidate()
@@ -127,14 +201,19 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     func setForeground(_ active: Bool) {
         let resumed = active && !foreground
         foreground = active
-        if resumed && requested { pairMonitor.beginMonitoring() }
+        if active { alerts.refreshPermission() }
+        if resumed && requested { pairMonitor.beginMonitoring(); alerts.start(primary: savedIdentity) }
         if !active {
-            for id in sessions.keys { sessions[id]?.suspend() }
-            cancelConnections()
+            if !backgroundRecovery {
+                for id in sessions.keys { sessions[id]?.suspend() }
+                cancelConnections()
+            }
             invalidateReadings()
-            connectionStatus = "Paused while app is inactive"
+            alerts.background()
+            connectionStatus = "Glucose reception paused while app is inactive"
         }
         updateScan()
+        if !active { recoverConnections() }
     }
 
     func select(_ id: UUID) {
@@ -176,6 +255,9 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             pairMonitor = candidate
             pairState = candidate.state
             savedIdentity = pairState.primary
+            if savedIdentity != priorPrimary {
+                if requested { alerts.start(primary: savedIdentity) } else { alerts.stop() }
+            }
             // Legacy phase-1 identity is no longer authoritative after migration.
             store.forget()
             restoreLatest()
@@ -264,9 +346,12 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             peripherals.removeAll()
             cancelling.removeAll()
             connectionStatus = "Waiting for Bluetooth"
+            alerts.invalidReading()
+            alerts.connectionChanged(false)
         }
         if central.state == .poweredOn && requested && foreground { pairMonitor.beginMonitoring() }
         updateScan()
+        recoverConnections()
     }
 
     private func updateScan() {
@@ -294,7 +379,9 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     }
 
     private func tick() {
-        guard requested, foreground, let central, central.state == .poweredOn else { return }
+        guard requested, foreground else { return }
+        alerts.tick(connected: central?.state == .poweredOn && selectedID.flatMap { peripherals[$0]?.state } == .connected)
+        guard let central, central.state == .poweredOn else { return }
         let now = Date()
         pairMonitor.pulse(at: now)
         automaticHandover = pairMonitor.automatic
@@ -337,13 +424,14 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        guard !cancelling.contains(peripheral.identifier), foreground,
+        guard !cancelling.contains(peripheral.identifier), foreground || mayRecover(peripheral.identifier),
               sessions[peripheral.identifier]?.connected(peripheral.identifier, at: Date()) == true else {
             cancelling.insert(peripheral.identifier)
             central.cancelPeripheralConnection(peripheral)
             return
         }
         peripheral.delegate = self
+        if peripheral.identifier == selectedID { alerts.connectionChanged(true) }
         peripheral.discoverServices([service])
         tick()
     }
@@ -359,9 +447,15 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
         if !cancelled { sessions[peripheral.identifier]?.failed(peripheral.identifier, at: Date()) }
         if let i = sensors.firstIndex(where: { $0.id == peripheral.identifier }) { sensors[i].lastPacketValid = false }
         if peripheral.identifier == selectedID { recordValidatedThisSession = false }
+        if peripheral.identifier == selectedID { alerts.invalidReading() }
+        if peripheral.identifier == selectedID { alerts.connectionChanged(false) }
         if peripheral.identifier == replacementIdentity?.peripheralID { replacementValidatedThisSession = false }
         if let identity = monitoredIdentities.first(where: { $0.peripheralID == peripheral.identifier }) { pairMonitor.reject(identity) }
         tick()
+        if !foreground, mayRecover(peripheral.identifier) {
+            let delay = max(0, sessions[peripheral.identifier]?.retryAt?.timeIntervalSinceNow ?? 0)
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in self?.recoverConnections() }
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
@@ -393,6 +487,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
 
     private func finishDiscovery(_ peripheral: CBPeripheral, compatible: Bool) {
         sessions[peripheral.identifier]?.discovered(peripheral.identifier, compatible: compatible)
+        if peripheral.identifier == selectedID { alerts.connectionChanged(compatible) }
         if !compatible {
             cancelling.insert(peripheral.identifier)
             central?.cancelPeripheralConnection(peripheral)
@@ -403,7 +498,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral,
                         advertisementData: [String: Any], rssi RSSI: NSNumber) {
-        guard scanning, foreground else { return }
+        guard scanning, BackgroundRecoveryPolicy.mayReadGlucose(foreground: foreground, requested: requested) else { return }
         let now = Date()
         sensors.removeAll { !monitoredIDs.contains($0.id) && now.timeIntervalSince($0.seenAt) > 120 }
         let retained = Set(sensors.map { $0.id }).union(cancelling)
@@ -448,12 +543,14 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
                             storageError = nil
                             historyIdentities = try history.identities()
                             historyRevision += 1
+                            if identity == savedIdentity { alerts.accept(record) }
                             item.packetStatus = "New sensor minute saved locally"
                         } else {
                             item.packetStatus = "Already saved or older sensor minute — receipt time unchanged"
                         }
                     } catch {
                         if id == selectedID { recordValidatedThisSession = false }
+                        if id == selectedID { alerts.invalidReading() }
                         else { replacementValidatedThisSession = false }
                         pairMonitor.reject(identity)
                         storageError = "Reading could not be saved. Existing history was kept. \(error)"
@@ -463,6 +560,7 @@ final class SensorScanner: NSObject, ObservableObject, CBCentralManagerDelegate,
             } catch {
                 item.lastPacketValid = false
                 if id == selectedID { recordValidatedThisSession = false }
+                if id == selectedID { alerts.invalidReading() }
                 if id == replacementIdentity?.peripheralID { replacementValidatedThisSession = false }
                 if let identity = monitoredIdentity { pairMonitor.reject(identity) }
                 item.packetStatus = "Advertisement rejected: \(error)"
