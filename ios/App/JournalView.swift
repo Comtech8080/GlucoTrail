@@ -150,7 +150,7 @@ struct JournalEntryForm: View {
         _machineID = State(initialValue: original.machineID ?? "")
         var values = original.metrics
         if pounds, let kg = values["kg"] { values["kg"] = JournalUnits.pounds(fromKilograms: kg) }
-        _fields = State(initialValue: values.mapValues { String(format: "%.8g", $0) })
+        _fields = State(initialValue: values.mapValues { String($0) })
     }
     var body: some View {
         NavigationStack {
@@ -242,8 +242,9 @@ struct JournalEntryForm: View {
         do {
             var metrics: [String: Double] = [:]
             for (key, raw) in fields where !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                guard let value = Double(raw.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: ",", with: ".")), value.isFinite else { throw JournalError.invalid("Enter a valid number for \(key).") }
+                let value = try JournalUnits.number(raw, decimalSeparator: Locale.current.decimalSeparator ?? ".")
                 metrics[key] = key == "kg" && pounds ? JournalUnits.kilograms(fromPounds: value) : value
+                if key == "kg", pounds, let originalKg = original.metrics["kg"], raw == String(JournalUnits.pounds(fromKilograms: originalKg)) { metrics[key] = originalKg }
             }
             var name = label
             if original.kind == .workout {

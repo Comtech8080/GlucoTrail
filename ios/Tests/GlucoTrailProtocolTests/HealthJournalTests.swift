@@ -44,6 +44,14 @@ final class HealthJournalTests: XCTestCase {
         XCTAssertEqual(JournalUnits.pounds(fromKilograms: JournalUnits.kilograms(fromPounds: 155.5)), 155.5, accuracy: 0.000001)
         for value in [0.0, 501, -.infinity] { XCTAssertThrowsError(try JournalEntry(kind: .weight, occurredAt: now, metrics: ["kg": value]).validate()) }
     }
+    func testNumericInputUsesLocaleDecimalAndRejectsAmbiguousGrouping() throws {
+        XCTAssertEqual(try JournalUnits.number("1.5", decimalSeparator: "."), 1.5)
+        XCTAssertEqual(try JournalUnits.number("1,5", decimalSeparator: ","), 1.5)
+        XCTAssertThrowsError(try JournalUnits.number("1,000", decimalSeparator: "."))
+        XCTAssertThrowsError(try JournalUnits.number("1,000.5", decimalSeparator: ","))
+        XCTAssertThrowsError(try JournalUnits.number("nan", decimalSeparator: "."))
+        XCTAssertThrowsError(try JournalUnits.number("1 000", decimalSeparator: ","))
+    }
     func testInsulinRequiresNameAmountAndExplicitDuration() {
         XCTAssertNoThrow(try insulin().validate())
         var entry = insulin(); entry.label = ""; XCTAssertThrowsError(try entry.validate())

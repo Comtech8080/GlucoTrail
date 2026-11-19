@@ -100,6 +100,12 @@ public enum InsulinCountdown: Equatable {
 public enum JournalUnits {
     public static func kilograms(fromPounds pounds: Double) -> Double { pounds * 0.45359237 }
     public static func pounds(fromKilograms kilograms: Double) -> Double { kilograms / 0.45359237 }
+    public static func number(_ text: String, decimalSeparator: String) throws -> Double {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = decimalSeparator == "," ? trimmed.replacingOccurrences(of: ",", with: ".") : trimmed
+        guard let number = Double(normalized), number.isFinite else { throw JournalError.invalid("Enter a number without thousands separators.") }
+        return number
+    }
 }
 
 public struct JournalArchive: Codable, Equatable {
