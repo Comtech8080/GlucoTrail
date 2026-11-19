@@ -3,6 +3,7 @@ import GlucoTrailProtocol
 
 struct HistoryView: View {
     @ObservedObject var scanner: SensorScanner
+    @ObservedObject var journal: JournalController
     let mmol: Bool
     let demo: Bool
     let samples: [GlucoseRecord]
@@ -14,6 +15,10 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink("Health journal") { JournalView(journal: journal, scanner: scanner, samples: samples) }
+                        .accessibilityIdentifier("healthJournal")
+                }
                 if demo {
                     Section { Text("DEMO · sample history only").foregroundStyle(.orange) }
                 }

@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 4 notifications and safety validation
+# GlucoTrail iOS — Phase 5 health journal and fitness
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -6,6 +6,12 @@ The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; gener
 projects are intentionally untracked. Both build services run the same build script.
 
 ## Implemented
+
+- Health journal from History or Settings: timestamped notes with optimized photos,
+  blood pressure, weight, administered-insulin records with chosen-duration countdowns,
+  equipment catalogue and manual workout logging. See [Phase 5 details](PHASE5.md).
+- User-initiated JSON export with optional glucose readings and photos. No import or
+  automatic/cloud backup. Demo journal entries stay in memory and export as demo data.
 
 - Configurable, opt-in local notifications and protected alert history under Settings →
   Alerts & safety. Read [Phase 4 behavior and physical validation](PHASE4.md) before use.

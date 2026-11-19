@@ -17,6 +17,7 @@ struct GlucoTrailApp: App {
 
 struct ContentView: View {
     @ObservedObject var scanner: SensorScanner
+    @StateObject private var journal = JournalController()
     @AppStorage("glucoseUnitMmol") private var mmol = true
     @State private var demo = ProcessInfo.processInfo.arguments.contains("--demo")
     @State private var samples: [GlucoseRecord] = []
@@ -25,15 +26,16 @@ struct ContentView: View {
         TabView {
             DashboardView(scanner: scanner, mmol: mmol, demo: demo, samples: samples)
                 .tabItem { Label("Dashboard", systemImage: "chart.xyaxis.line") }
-            HistoryView(scanner: scanner, mmol: mmol, demo: demo, samples: samples)
+            HistoryView(scanner: scanner, journal: journal, mmol: mmol, demo: demo, samples: samples)
                 .tabItem { Label("History", systemImage: "clock") }
             ReplacementView(scanner: scanner, mmol: mmol, demo: demo, samples: samples)
                 .tabItem { Label("Replacement", systemImage: "arrow.triangle.swap") }
             sensorView.tabItem { Label("Sensor", systemImage: "waveform.path.ecg") }
             settingsView.tabItem { Label("Settings", systemImage: "gearshape") }
         }
-        .onAppear { if demo { startDemo() } }
+        .onAppear { journal.setDemo(demo); if demo { startDemo() } }
         .onChange(of: demo) { enabled in
+            journal.setDemo(enabled)
             if enabled { startDemo() } else { samples = [] }
         }
     }
@@ -103,6 +105,8 @@ struct ContentView: View {
                     Text("Demo readings stay separate from your saved glucose history. Turning demo off leaves Bluetooth stopped until you start it.").font(.caption)
                 }
                 Section("Local history") {
+                    NavigationLink("Health journal") { JournalView(journal: journal, scanner: scanner, samples: samples) }
+                        .accessibilityIdentifier("settingsJournal")
                     Text("Readings from your primary and replacement sensors are saved on this iPhone. History is excluded from device backups and is removed when the app is deleted. Forgetting a sensor keeps its history available in the History tab.")
                     if let error = scanner.storageError { Text(error).foregroundStyle(.red) }
                     Text("Manufacturer packets received: \(scanner.packetCount)")
@@ -113,8 +117,8 @@ struct ContentView: View {
                         .accessibilityIdentifier("alertsSettings")
                 }
                 Section("About") {
-                    Text("GlucoTrail iOS · 0.5.0 (5)")
-                    Text("Phase 4: configurable notifications and experimental connection recovery. Continuous background glucose and encrypted GATT remain unavailable. No TestFlight build is available yet.")
+                    Text("GlucoTrail iOS · 0.6.0 (6)")
+                    Text("Phase 5: health journal, insulin countdowns, workout logging and local export. Continuous background glucose and encrypted GATT remain unavailable. No TestFlight build is available yet.")
                     Link("GlucoTrail on GitHub", destination: URL(string: "https://github.com/Comtech8080/GlucoTrail")!)
                 }
             }.navigationTitle("Settings")

@@ -5,8 +5,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: '5.0'
-    MARKETING_VERSION: '0.5.0'
-    CURRENT_PROJECT_VERSION: 5
+    MARKETING_VERSION: '0.6.0'
+    CURRENT_PROJECT_VERSION: 6
 packages:
   GlucoTrailProtocol:
     path: .
@@ -31,6 +31,18 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+  GlucoTrailAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: GlucoTrail
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.glucotrail.ios.apptests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/GlucoTrail.app/GlucoTrail"
+        BUNDLE_LOADER: "$(TEST_HOST)"
   GlucoTrailUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -48,4 +60,5 @@ schemes:
         GlucoTrail: all
     test:
       targets:
+        - GlucoTrailAppTests
         - GlucoTrailUITests

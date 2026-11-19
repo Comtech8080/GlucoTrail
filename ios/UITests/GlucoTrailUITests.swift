@@ -1,6 +1,59 @@
 import XCTest
 
 final class GlucoTrailUITests: XCTestCase {
+    func testJournalEntryEditingExportAndDemoIsolation() {
+        let app = XCUIApplication(); app.launchArguments = ["--demo"]; app.launch()
+        app.tabBars.buttons["History"].tap(); app.buttons["healthJournal"].tap()
+        XCTAssertTrue(app.staticTexts["journalDemoBanner"].waitForExistence(timeout: 5))
+        app.buttons["addJournalEntry"].tap(); app.buttons["Note"].tap()
+        app.textViews.firstMatch.exists ? app.textViews.firstMatch.tap() : app.textFields["journalNoteText"].tap()
+        app.typeText("Phase 5 journal note")
+        app.buttons["saveJournalEntry"].tap()
+        let note = app.buttons["journalEntry-note"]
+        for _ in 0..<4 where !note.isHittable { app.swipeUp() }
+        note.tap()
+        XCTAssertTrue(app.staticTexts["journalDetailSummary"].label.contains("Phase 5 journal note"))
+        app.buttons["editJournalEntry"].tap()
+        app.buttons["saveJournalEntry"].tap()
+        XCTAssertTrue(app.staticTexts["journalDetailSummary"].label.contains("Phase 5 journal note"))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let export = app.buttons["journalExport"]
+        for _ in 0..<4 where !export.isHittable { app.swipeDown() }
+        export.tap()
+        let prepare = app.buttons["prepareJournalExport"]
+        for _ in 0..<4 where !prepare.isHittable { app.swipeUp() }
+        prepare.tap()
+        XCTAssertTrue(app.staticTexts["journalExportStatus"].label.contains("1 journal entries, 0 glucose readings"))
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        for _ in 0..<4 where !note.isHittable { app.swipeUp() }; note.tap()
+        app.buttons["deleteJournalEntry"].tap(); app.buttons["Delete permanently"].tap()
+        XCTAssertTrue(app.staticTexts["emptyJournal"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap(); app.buttons["demoButton"].tap()
+        app.tabBars.buttons["History"].tap()
+        if app.buttons["healthJournal"].exists { app.buttons["healthJournal"].tap() }
+        XCTAssertFalse(app.staticTexts["journalDemoBanner"].exists)
+        XCTAssertTrue(app.staticTexts["emptyJournal"].exists)
+    }
+
+    func testJournalInsulinCountdownAndValidation() {
+        let app = XCUIApplication(); app.launchArguments = ["--demo"]; app.launch()
+        app.tabBars.buttons["History"].tap(); app.buttons["healthJournal"].tap()
+        app.buttons["addJournalEntry"].tap(); app.buttons["Insulin"].tap()
+        app.buttons["saveJournalEntry"].tap()
+        XCTAssertTrue(app.staticTexts["journalFormError"].exists)
+        app.textFields["journalInsulinName"].tap(); app.typeText("Demo insulin")
+        app.textFields["journalField-units"].tap(); app.typeText("1.5")
+        app.textFields["journalField-durationMinutes"].tap(); app.typeText("180")
+        app.buttons["saveJournalEntry"].tap()
+        let entry = app.buttons["journalEntry-insulin"]
+        for _ in 0..<4 where !entry.isHittable { app.swipeUp() }
+        entry.tap()
+        XCTAssertTrue(app.staticTexts["insulinCountdown"].label.contains("remaining"))
+        XCTAssertTrue(app.staticTexts["journalDetailSummary"].label.contains("1.5 units"))
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 5 recorded insulin countdown"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
     func testAlertPreviewsNeverEnableRealNotifications() {
         let app = XCUIApplication()
         app.launchArguments = ["--demo"]
