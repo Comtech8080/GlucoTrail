@@ -191,7 +191,9 @@ struct JournalEntryForm: View {
                 Picker("Equipment", selection: $machineID) {
                     Text("Choose equipment").tag("")
                     if let oldID = original.machineID, !journal.machines.contains(where: { $0.id == oldID }) { Text(original.label + " (removed)").tag(oldID) }
-                    ForEach(journal.machines) { Text($0.name).tag($0.id) }
+                    ForEach(journal.machines) { machine in
+                        Text(machine.id == original.machineID ? original.label + " (recorded)" : machine.name).tag(machine.id)
+                    }
                 }.accessibilityIdentifier("workoutEquipment")
                 field("durationMinutes", "Duration (minutes)"); field("sets", "Sets (optional)")
                 field("reps", "Repetitions per set (optional)"); field("loadKg", "Load (kg, optional)")
@@ -249,7 +251,7 @@ struct JournalEntryForm: View {
             var name = label
             if original.kind == .workout {
                 guard !machineID.isEmpty else { throw JournalError.invalid("Choose equipment from the catalogue.") }
-                name = journal.machines.first { $0.id == machineID }?.name ?? original.label
+                name = machineID == original.machineID ? original.label : (journal.machines.first { $0.id == machineID }?.name ?? original.label)
             }
             let entry = JournalEntry(id: original.id, kind: original.kind, occurredAt: date, label: name, text: text,
                 metrics: metrics, photoIDs: photoIDs, machineID: original.kind == .workout ? machineID : nil)
