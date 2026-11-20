@@ -21,6 +21,7 @@ workflows:
         script: |
           set -eu
           cd "$CM_BUILD_DIR"
+          ruby -e 'require "yaml"; YAML.load_file("codemagic.yaml")'
           python3 -m unittest discover -s ios/scripts -p 'test_*.py'
           python3 ios/scripts/release.py check
       - name: Test protocol, identity persistence and simulated connections
@@ -84,8 +85,9 @@ workflows:
         script: |
           set -eu
           cd "$CM_BUILD_DIR/ios"
-          xcode-project use-profiles
-          xcode-project build-ipa --project GlucoTrail.xcodeproj --scheme GlucoTrail \
+          xcode-project use-profiles --custom-export-options='{"manageAppVersionAndBuildNumber": false}'
+          xcode-project build-ipa --project GlucoTrail.xcodeproj --scheme GlucoTrail --config Release \
+            --archive-directory build/ios/xcarchive --ipa-directory build/ios/ipa \
             --archive-xcargs "CURRENT_PROJECT_VERSION=$IOS_BUILD_NUMBER"
       - name: Verify exported identity and record artifact checksum
         script: |
@@ -94,7 +96,7 @@ workflows:
           python3 ios/scripts/release.py verify
     artifacts:
       - ios/build/ios/ipa/*.ipa
-      - ios/build/ios/archive/*.xcarchive/dSYMs/*.dSYM
+      - ios/build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
       - ios/build/*.xcresult
       - ios/build/release-record.json
       - ios/build/what-to-test.txt
