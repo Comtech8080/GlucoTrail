@@ -1452,7 +1452,7 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                 val raw = sensors
                     .filter { it.serial.uppercase() == serial }
                     .mapNotNull { it.reading }
-                    .filter { it.crcValid && it.valid && !it.isWarmup }
+                    .filter { it.crcValid && (it.isWarmup || it.valid) }
                     .maxByOrNull { it.sensorMinute }
                 if (raw != null && _glucoRingEnabled.value) {
                     val reading =
