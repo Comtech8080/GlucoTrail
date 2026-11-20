@@ -62,9 +62,9 @@ jobs:
           GLUCOTRAIL_KEY_PASSWORD: ${{ secrets.GLUCOTRAIL_KEY_PASSWORD }}
         run: |
           if [[ "$RELEASE_TAG" == *-* ]]; then
-            sh ./gradlew testDebugUnitTest lintRelease assembleDevRelease
+            sh ./gradlew testDevDebugUnitTest lintDevRelease assembleDevRelease
           else
-            sh ./gradlew testDebugUnitTest lintRelease assembleProductionRelease
+            sh ./gradlew testProductionDebugUnitTest lintProductionRelease assembleProductionRelease
           fi
       - name: Verify and package release assets
         shell: bash
