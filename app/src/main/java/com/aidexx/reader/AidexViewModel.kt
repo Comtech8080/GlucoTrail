@@ -150,7 +150,9 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                     quality = latest.quality,
                     sensorMinute = latest.sensorMinute,
                     valid = latest.valid,
-                    mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L
+                    mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
+                    lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
+                    highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
                 )
             }
         }
@@ -1453,7 +1455,9 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                             quality = latest.quality,
                             sensorMinute = latest.sensorMinute,
                             valid = latest.valid,
-                            mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L
+                            mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
+                            lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
+                            highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
                         )
                     }
                 }

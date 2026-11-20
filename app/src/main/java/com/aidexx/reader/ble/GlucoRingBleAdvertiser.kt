@@ -15,7 +15,7 @@ import android.annotation.SuppressLint
  * Broadcasts the latest glucose reading so a nearby GlucoRing can pick it up
  * by passively scanning BLE advertisements.
  *
- * Wire protocol (8 bytes of service data under [SERVICE_UUID]):
+ * Wire protocol (12 bytes of service data under [SERVICE_UUID]):
  *
  *   byte 0        version = 0x01
  *   byte 1        flags   (bit 0 = valid, bit 1 = mmol/L if set, else mg/dL)
@@ -23,6 +23,8 @@ import android.annotation.SuppressLint
  *   byte 4        trend raw, int8 (units of 0.1 mg/dL per minute)
  *   byte 5        quality (0..100)
  *   byte 6..7     sensor minute, uint16 little-endian
+ *   byte 8..9     low limit mg/dL, uint16 little-endian
+ *   byte 10..11   high limit mg/dL, uint16 little-endian
  */
 @SuppressLint("MissingPermission")
 class GlucoRingBleAdvertiser(context: Context) {
@@ -53,7 +55,9 @@ class GlucoRingBleAdvertiser(context: Context) {
         quality: Int,
         sensorMinute: Int,
         valid: Boolean = true,
-        mmol: Boolean = false
+        mmol: Boolean = false,
+        lowMgDl: Int = 70,
+        highMgDl: Int = 180
     ) {
         if (!enabled) return
 
@@ -71,7 +75,11 @@ class GlucoRingBleAdvertiser(context: Context) {
             trendRaw.toByte(),
             (quality and 0xFF).toByte(),
             (sensorMinute and 0xFF).toByte(),
-            ((sensorMinute shr 8) and 0xFF).toByte()
+            ((sensorMinute shr 8) and 0xFF).toByte(),
+            (lowMgDl and 0xFF).toByte(),
+            ((lowMgDl shr 8) and 0xFF).toByte(),
+            (highMgDl and 0xFF).toByte(),
+            ((highMgDl shr 8) and 0xFF).toByte()
         )
 
         val settings = AdvertiseSettings.Builder()
