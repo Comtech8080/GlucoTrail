@@ -1,6 +1,29 @@
 import XCTest
 
 final class GlucoTrailUITests: XCTestCase {
+    func testBetaReleaseNotesAndFeedbackPreview() {
+        let app = XCUIApplication(); app.launchArguments = ["--demo"]; app.launch()
+        app.tabBars.buttons["Settings"].tap()
+        let beta = app.buttons["betaInformation"]
+        for _ in 0..<6 where !beta.isHittable { app.swipeUp() }
+        beta.tap()
+        XCTAssertTrue(app.staticTexts["installedBuild"].label.contains("0.7.0"))
+        let feedback = app.buttons["prepareBetaFeedback"]
+        for _ in 0..<4 where !feedback.isHittable { app.swipeUp() }
+        feedback.tap()
+        let preview = app.staticTexts["betaFeedbackPreview"]
+        XCTAssertTrue(preview.label.contains("Mode: Demo"))
+        XCTAssertTrue(preview.label.contains("No glucose readings, sensor identifiers, notes or photos are attached."))
+        XCTAssertTrue(app.buttons["shareBetaFeedback"].exists)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Phase 6 feedback preview"; screenshot.lifetime = .keepAlways; add(screenshot)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        let notes = app.buttons["0.7.0 · Beta distribution"]
+        for _ in 0..<4 where !notes.isHittable { app.swipeUp() }
+        notes.tap()
+        XCTAssertTrue(app.staticTexts["Installed build information, version history and a previewable feedback template."].exists)
+    }
+
     func testJournalEntryEditingExportAndDemoIsolation() {
         let app = XCUIApplication(); app.launchArguments = ["--demo"]; app.launch()
         app.tabBars.buttons["History"].tap(); app.buttons["healthJournal"].tap()

@@ -1,4 +1,4 @@
-# GlucoTrail iOS — Phase 5 health journal and fitness
+# GlucoTrail iOS — Phase 6 beta distribution
 
 Native SwiftUI iPhone app (iOS 16+) with a Swift package using Foundation and system SQLite for protocol,
 identity persistence, SQLite glucose history and deterministic connection policy. Android is unchanged.
@@ -6,6 +6,11 @@ The XcodeGen specification `project.yml` generates `GlucoTrail.xcodeproj`; gener
 projects are intentionally untracked. Both build services run the same build script.
 
 ## Implemented
+
+- Installed version/build, development release notes and previewable feedback sharing.
+- Automatic unsigned Codemagic validation and a manually controlled signed App Store
+  Connect upload workflow. See [Phase 6 setup and promotion](PHASE6.md). Account setup,
+  signed device acceptance and actual TestFlight distribution remain owner steps.
 
 - Health journal from History or Settings: timestamped notes with optimized photos,
   blood pressure, weight, administered-insulin records with chosen-duration countdowns,
@@ -46,9 +51,9 @@ See [PROTOCOL.md](PROTOCOL.md) for exact evidence and remaining validation work.
 Live glucose is available only if iOS delivers the full supported advertisement. Some
 AiDEX scan responses may expose only a short manufacturer record. Such records are
 rejected; the app will not synthesize values or treat encrypted data as cleartext.
-CRC integrity does not establish authenticity or clinical accuracy. This is a foreground
-engineering prototype with no glucose alarms, background monitoring, dual-sensor handover,
-or TestFlight distribution. Continue established monitoring for care.
+CRC integrity does not establish authenticity or clinical accuracy. This is an engineering prototype. Opt-in alerts, guarded dual-sensor handover and
+experimental connection recovery are implemented, but continuous background glucose
+and reliable background alarms are not validated. Continue established monitoring for care.
 
 ## Build and test
 
@@ -68,15 +73,16 @@ Select the GlucoTrail scheme. Simulator supports the screen/demo, not BLE. For l
 physical-device testing, configure your signing team in the generated Xcode project.
 The bundle identifier is `com.glucotrail.ios`; change it if your signing setup requires it.
 Unsigned iPhone ZIPs prove compilation only: they are not installable IPAs. TestFlight
-requires a separate signed distribution setup, which this workflow does not configure.
+requires the separate signed workflow and account setup described in [Phase 6](PHASE6.md).
 
 ## Codemagic
 
 Connect Comtech8080/GlucoTrail in Codemagic, select the branch containing this change,
 choose **GlucoTrail iOS unsigned validation**, and start a build. No secrets,
 Apple account or signing profile are needed for these unsigned builds. The workflow is
-manual to avoid unsolicited recurring builds. Account connection and actual Codemagic
-execution must be done in the user's account; committing YAML does not activate them.
+automatic on iOS changes pushed to main or ios-develop after webhook setup, and can
+also be started manually. Account connection and actual Codemagic execution must be
+done in the user's account; committing YAML does not activate them.
 Check your account's included build allowance before running builds.
 
 [Codemagic unsigned native builds](https://docs.codemagic.io/yaml-quick-start/first-signed-build/)
@@ -166,7 +172,8 @@ Live comparison requires both post-warm-up readings to be less than five minutes
 old and received within two minutes of one another. Meter references are neither
 saved nor sent to the sensor. Demo handovers use memory-only identities and never
 change real roles or history. Android code and the BLE protocol boundary are unchanged:
-encrypted GATT, activation, background monitoring and alarms remain unavailable.
+encrypted GATT and activation remain unavailable. Phase 4 adds opt-in alerts and
+experimental connection recovery, without continuous background glucose guarantees.
 
 Tests cover readiness, stale/replayed packets, interrupted sessions, auto-handover
 timing, independent reconnect state, atomic persistence and raw comparisons. UI tests

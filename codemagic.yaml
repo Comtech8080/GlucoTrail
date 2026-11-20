@@ -3,9 +3,27 @@ workflows:
     name: GlucoTrail iOS unsigned validation
     instance_type: mac_mini_m2
     max_build_duration: 30
+    triggering:
+      events: [push]
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: ios-develop
+          include: true
+      cancel_previous_builds: true
+    when:
+      changeset:
+        includes: ['ios/**', 'codemagic.yaml']
     environment:
       xcode: latest
     scripts:
+      - name: Validate release tooling and metadata
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          ruby -e 'require "yaml"; YAML.load_file("codemagic.yaml")'
+          python3 -m unittest discover -s ios/scripts -p 'test_*.py'
+          python3 ios/scripts/release.py check
       - name: Test protocol, identity persistence and simulated connections
         script: |
           set -eu
@@ -31,5 +49,61 @@ workflows:
       - ios/GlucoTrail-Simulator.zip
       - ios/GlucoTrail-iPhone-Unsigned.zip
       - ios/build/*.xcresult
-# Intentionally manual: connect this repository in Codemagic and select this
-# workflow. No paid plan, signing credentials, TestFlight upload or billing enabled.
+  ios-beta:
+    name: GlucoTrail iOS controlled beta upload
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    # No webhook triggers. Run manually for one reviewed SHA; see ios/PHASE6.md.
+    integrations:
+      app_store_connect: GlucoTrail App Store Connect
+    environment:
+      xcode: latest
+      groups: [glucotrail_beta_release]
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.glucotrail.ios
+    scripts:
+      - name: Check explicit release selection
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          python3 -m unittest discover -s ios/scripts -p 'test_*.py'
+          python3 ios/scripts/release.py prepare
+      - name: Test core and generate project
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR/ios"
+          swift test
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          xcodegen generate
+      - name: Test native application before signing
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          bash ios/scripts/test-ui.sh
+      - name: Sign and archive selected build
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR/ios"
+          xcode-project use-profiles --custom-export-options='{"manageAppVersionAndBuildNumber": false}'
+          xcode-project build-ipa --project GlucoTrail.xcodeproj --scheme GlucoTrail --config Release \
+            --archive-directory build/ios/xcarchive --ipa-directory build/ios/ipa \
+            --archive-xcargs "CURRENT_PROJECT_VERSION=$IOS_BUILD_NUMBER"
+      - name: Verify exported identity and record artifact checksum
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          python3 ios/scripts/release.py verify
+    artifacts:
+      - ios/build/ios/ipa/*.ipa
+      - ios/build/ios/xcarchive/*.xcarchive/dSYMs/*.dSYM
+      - ios/build/*.xcresult
+      - ios/build/release-record.json
+      - ios/build/what-to-test.txt
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
+# Upload only. Disable automatic distribution in App Store Connect groups too.
+# Invitation, external beta review and public links are separate owner actions.

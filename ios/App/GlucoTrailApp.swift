@@ -117,8 +117,10 @@ struct ContentView: View {
                         .accessibilityIdentifier("alertsSettings")
                 }
                 Section("About") {
-                    Text("GlucoTrail iOS · 0.6.0 (6)")
-                    Text("Phase 5: health journal, insulin countdowns, workout logging and local export. Continuous background glucose and encrypted GATT remain unavailable. No TestFlight build is available yet.")
+                    Text(AppBuild.current.displayName)
+                    NavigationLink("Beta information & feedback") { BetaInformationView(demo: demo) }
+                        .accessibilityIdentifier("betaInformation")
+                    Text("Engineering beta. Continuous background glucose and encrypted GATT remain unavailable. Keep using your established monitoring system.")
                     Link("GlucoTrail on GitHub", destination: URL(string: "https://github.com/Comtech8080/GlucoTrail")!)
                 }
             }.navigationTitle("Settings")

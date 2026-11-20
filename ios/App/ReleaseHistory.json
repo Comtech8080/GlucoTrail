@@ -1,0 +1,8 @@
+[
+  {"version":"0.7.0","title":"Beta distribution","changes":["Installed build information, version history and a previewable feedback template.","Automatic unsigned validation and a manually controlled signed upload workflow.","Sensor reception still requires the foreground. Encrypted GATT and reliable continuous background alarms are unavailable."]},
+  {"version":"0.6.0","title":"Health journal and fitness","changes":["Notes and optimized photos, blood pressure, weight, administered-insulin records and chosen-duration countdowns.","Equipment catalogue, manual workout records and explicit local JSON export."]},
+  {"version":"0.5.0","title":"Alerts and recovery","changes":["Opt-in local alerts, alert history and experimental background connection recovery.","Background connection recovery does not provide continuous background glucose monitoring."]},
+  {"version":"0.4.0","title":"Sensor replacement","changes":["Separate primary and replacement streams, overlap comparison and guarded handover."]},
+  {"version":"0.3.0","title":"Dashboard and history","changes":["Glucose trends, 2–72-hour graphs, local history and isolated demo data."]},
+  {"version":"0.2.0","title":"Bluetooth foundation","changes":["Discovery, connection recovery, persistent identity and validated advertisement parsing.","Encrypted sensor commands remain disabled."]}
+]
