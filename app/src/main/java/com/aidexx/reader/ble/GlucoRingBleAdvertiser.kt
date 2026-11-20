@@ -9,7 +9,9 @@ import android.content.Context
 import android.os.ParcelUuid
 import android.util.Log
 import java.util.UUID
+import android.annotation.SuppressLint
 
+@SuppressLint("MissingPermission")
 class GlucoRingBleAdvertiser(context: Context) {
 
     companion object {
@@ -45,17 +47,25 @@ class GlucoRingBleAdvertiser(context: Context) {
             .addServiceData(ParcelUuid(SERVICE_UUID), payload)
             .build()
 
-        adv.startAdvertising(settings, data, object : AdvertiseCallback() {
+        try {
+            adv.startAdvertising(settings, data, object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
                 Log.i("GlucoRing", "Reading advertised: $glucoseMgDl mg/dL, trend $trendRaw")
             }
             override fun onStartFailure(errorCode: Int) {
                 Log.e("GlucoRing", "Advertise failed: $errorCode")
             }
-        })
+            })
+        } catch (e: SecurityException) {
+            Log.w("GlucoRing", "BLE advertise permission missing: ${e.message}")
+        }
     }
 
     fun stop() {
-        advertiser?.stopAdvertising(object : AdvertiseCallback() {})
+        try {
+            advertiser?.stopAdvertising(object : AdvertiseCallback() {})
+        } catch (e: SecurityException) {
+            Log.w("GlucoRing", "BLE advertise permission missing: ${e.message}")
+        }
     }
 }
