@@ -500,6 +500,51 @@ class AlarmMonitorService : Service() {
                     sensor
                 )
 
+                /*
+                 * The scanner detects every AiDEX sensor, but only the selected
+                 * primary feeds alarms/GATT. Persist the replacement sensor's
+                 * reading too, so Dual Sensor Monitoring and the combined graph
+                 * can show its data.
+                 */
+                val replacementSerial =
+                    getSharedPreferences(
+                        "aidexx_reader",
+                        Context.MODE_PRIVATE
+                    )
+                        .getString(
+                            "replacement_sensor_serial",
+                            null
+                        )
+                        ?.trim()
+                        ?.uppercase()
+
+                if (
+                    replacementSerial != null &&
+                    !replacementSerial.equals(
+                        selectedSerial,
+                        ignoreCase =
+                            true
+                    )
+                ) {
+                    sensors
+                        .firstOrNull {
+                            it.serial.equals(
+                                replacementSerial,
+                                ignoreCase =
+                                    true
+                            )
+                        }
+                        ?.takeIf {
+                            it.reading != null
+                        }
+                        ?.let {
+                                replacement ->
+                            historyDb.saveSensor(
+                                replacement
+                            )
+                        }
+                }
+
                 if (
                     postWarmupRecoveryActive &&
                     !previousAddress.equals(
