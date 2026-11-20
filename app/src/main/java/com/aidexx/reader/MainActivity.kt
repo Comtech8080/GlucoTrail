@@ -6,6 +6,8 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -13522,6 +13524,9 @@ private fun DiagnosticsScreen(
     val selectedSerial by
         vm.selectedSerial
             .collectAsState()
+    val replacementSerial by
+        vm.replacementSerial
+            .collectAsState()
     val scanStatus by vm.scanStatus.collectAsState()
     val historyBackfill by
         vm.historyBackfillState
@@ -13576,6 +13581,121 @@ private fun DiagnosticsScreen(
                         .error
             )
         }
+
+    val context =
+        LocalContext.current
+
+    val diagnosticText =
+        buildString {
+            appendLine("=== GlucoTrail Diagnostics ===")
+            appendLine("Selected: ${selectedSerial ?: "none"}")
+            appendLine("Replacement: ${replacementSerial ?: "none"}")
+            appendLine("BLE packets: ${scanStatus.totalResults}")
+            appendLine("AiDEX candidates: ${scanStatus.aidexCandidates}")
+            appendLine("Live sensors: ${sensors.size}")
+            sensors.forEach { s ->
+                val r = s.reading
+                appendLine(
+                    "  ${s.serial} addr=${s.address} rssi=${s.rssi}" +
+                        if (r != null) {
+                            " glu=${r.glucoseMgDl} min=${r.sensorMinute} valid=${r.valid} warmup=${r.isWarmup} crc=${r.crcValid}"
+                        } else {
+                            " (no reading)"
+                        }
+                )
+            }
+            appendLine("Saved sensors: ${savedSensors.size}")
+            savedSensors.forEach { (serial, s) ->
+                appendLine("  $serial addr=${s.address}")
+            }
+            scanStatus.lastError?.let { appendLine("Error: $it") }
+        }
+
+    Button(
+        onClick = {
+            val clipboard =
+                context.getSystemService(
+                    Context.CLIPBOARD_SERVICE
+                ) as ClipboardManager
+
+            clipboard.setPrimaryClip(
+                ClipData.newPlainText(
+                    "GlucoTrail diagnostics",
+                    diagnosticText
+                )
+            )
+        }
+    ) {
+        Text("Copy diagnostics")
+    }
+
+    Spacer(
+        Modifier.height(
+            8.dp
+        )
+    )
+
+    Card(
+        Modifier.fillMaxWidth()
+    ) {
+        Column(
+            Modifier.padding(
+                12.dp
+            ),
+            verticalArrangement =
+                Arrangement.spacedBy(
+                    4.dp
+                )
+        ) {
+            Text(
+                "Sensors",
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+            Text(
+                "Selected: ${selectedSerial ?: "none"}"
+            )
+
+            Text(
+                "Replacement: ${replacementSerial ?: "none"}"
+            )
+
+            if (sensors.isEmpty()) {
+                Text(
+                    "No live sensors detected",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall
+                )
+            } else {
+                sensors.forEach { s ->
+                    val r = s.reading
+                    Text(
+                        "${s.serial}  ${s.address}  rssi=${s.rssi}",
+                        style =
+                            MaterialTheme
+                                .typography
+                                .bodySmall
+                    )
+                    Text(
+                        r?.let {
+                            "glu=${it.glucoseMgDl} min=${it.sensorMinute} valid=${it.valid} warmup=${it.isWarmup} crc=${it.crcValid}"
+                        } ?: "(no reading)",
+                        style =
+                            MaterialTheme
+                                .typography
+                                .labelSmall,
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
 
     Spacer(
         Modifier.height(
