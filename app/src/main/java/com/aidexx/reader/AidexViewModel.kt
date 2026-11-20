@@ -149,7 +149,8 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                     trendRaw = latest.trendRaw,
                     quality = latest.quality,
                     sensorMinute = latest.sensorMinute,
-                    valid = latest.valid
+                    valid = latest.valid,
+                    mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L
                 )
             }
         }
@@ -1451,7 +1452,8 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                             trendRaw = latest.trendRaw,
                             quality = latest.quality,
                             sensorMinute = latest.sensorMinute,
-                            valid = latest.valid
+                            valid = latest.valid,
+                            mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L
                         )
                     }
                 }

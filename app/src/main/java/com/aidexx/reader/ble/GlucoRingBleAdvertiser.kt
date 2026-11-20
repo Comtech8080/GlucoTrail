@@ -18,7 +18,7 @@ import android.annotation.SuppressLint
  * Wire protocol (8 bytes of service data under [SERVICE_UUID]):
  *
  *   byte 0        version = 0x01
- *   byte 1        flags   (bit 0 = reading valid)
+ *   byte 1        flags   (bit 0 = valid, bit 1 = mmol/L if set, else mg/dL)
  *   byte 2..3     glucose mg/dL, uint16 little-endian
  *   byte 4        trend raw, int8 (units of 0.1 mg/dL per minute)
  *   byte 5        quality (0..100)
@@ -52,7 +52,8 @@ class GlucoRingBleAdvertiser(context: Context) {
         trendRaw: Int,
         quality: Int,
         sensorMinute: Int,
-        valid: Boolean = true
+        valid: Boolean = true,
+        mmol: Boolean = false
     ) {
         if (!enabled) return
 
@@ -61,9 +62,10 @@ class GlucoRingBleAdvertiser(context: Context) {
             return
         }
 
+        val flags = (if (valid) 0x01 else 0x00) or (if (mmol) 0x02 else 0x00)
         val payload = byteArrayOf(
             PAYLOAD_VERSION.toByte(),
-            (if (valid) 0x01 else 0x00).toByte(),
+            flags.toByte(),
             (glucoseMgDl and 0xFF).toByte(),
             ((glucoseMgDl shr 8) and 0xFF).toByte(),
             trendRaw.toByte(),
