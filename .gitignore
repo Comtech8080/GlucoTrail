@@ -18,3 +18,6 @@ ios/.swiftpm/
 ios/*.xcodeproj/
 ios/*.zip
 ios/Generated-Info.plist
+*.ipa
+*.p8
+*.mobileprovision
