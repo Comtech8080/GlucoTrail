@@ -35,7 +35,7 @@ release job. Local `assembleRelease` without signing environment variables produ
 an unsigned APK for validation, which the packaging tool refuses to publish.
 
 1. Increment `versionCode` for **every** release, including betas. Set `versionName`
-   in `app/build.gradle.kts` (for example `0.1.60.20` or `0.1.60.21-beta.1`).
+   in `app/build.gradle.kts` (for example `0.1.60.20` or `0.1.60.21-dev`).
 2. Merge reviewed code, then push the matching tag, such as `v0.1.60.20`.
    Alternatively run the workflow manually with an existing matching tag.
 3. Actions tests, lints, builds, verifies the signature, and creates a **draft**
@@ -44,7 +44,7 @@ an unsigned APK for validation, which the packaging tool refuses to publish.
    are not overwritten. Hyphenated version tags are marked prereleases.
 4. Review/edit release notes and test an in-place update on a phone with the
    previous version and matching signing key. Publish the complete draft when ready.
-   Drafts cannot appear in the app; prereleases appear only when beta is enabled.
+   Drafts cannot appear in the app; prereleases appear only on the Dev channel.
 
 For a manual signed build, set `GLUCOTRAIL_KEYSTORE` to a local keystore path plus
 the three password/alias environment variables above. Run `assembleRelease`,

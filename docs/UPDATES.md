@@ -33,8 +33,8 @@ CI runs Android unit tests, debug assembly, and lint without release secrets.
 - Open Settings → App Updates; check installed/latest versions, notes and release link.
 - With no release assets, show an empty state; offline/rate limited requests show a
   retryable error rather than offering installation.
-- Publish a test stable/beta pair: toggle beta and verify the highest eligible
-  versionCode. Disable beta from an installed newer beta and verify no downgrade.
+- Publish a test Production/Dev pair: switch channels and verify the highest
+  eligible versionCode. Switching a Dev install to Production must not downgrade.
 - Download, cancel, retry, rotate, leave/reopen the screen, and interrupt the network.
   Verify progress and that no partial APK can be installed.
 - Tamper with the APK/checksum, use a different signing key, different application ID,

@@ -43,13 +43,13 @@ class UpdatesViewModel(app: Application) : AndroidViewModel(app) {
     private val mutable = MutableStateFlow(UpdatesState())
     val state = mutable.asStateFlow()
     private var job: Job? = null
-    fun check(beta: Boolean) {
+    fun check(channel: ReleaseChannel) {
         if (mutable.value.busy) return
         mutable.value.ready?.delete()
         mutable.value = UpdatesState(busy = true, message = "Checking GitHub…")
         job = viewModelScope.launch {
             try {
-                val release = client.latest(beta)
+                val release = client.latest(channel)
                 UpdateScheduler.preferences(getApplication()).edit().putLong("checked", System.currentTimeMillis()).remove("error").apply()
                 mutable.value = UpdatesState(release = release, message = when {
                     release == null -> "No compatible GlucoTrail releases published yet."
@@ -125,7 +125,7 @@ private fun UpdateScreen(vm: UpdatesViewModel, activity: AppUpdatesActivity) {
     val state by vm.state.collectAsState()
     var automatic by remember { mutableStateOf(prefs.getBoolean("automatic", true)) }
     var notifications by remember { mutableStateOf(prefs.getBoolean("notifications", true)) }
-    var beta by remember { mutableStateOf(prefs.getBoolean("beta", false)) }
+    var channel by remember { mutableStateOf(UpdateScheduler.channel(activity)) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (!granted) vm.message("Notifications are disabled by Android. You can still check here.")
     }
@@ -133,13 +133,13 @@ private fun UpdateScreen(vm: UpdatesViewModel, activity: AppUpdatesActivity) {
         vm.message(if (activity.packageManager.canRequestPackageInstalls()) "Install permission granted. Tap Install update to continue."
             else "Install permission was not granted. Your current app is unchanged.")
     }
-    LaunchedEffect(Unit) { if (state.release == null && !state.busy) vm.check(beta) }
+    LaunchedEffect(Unit) { if (state.release == null && !state.busy) vm.check(channel) }
     Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         TextButton(onClick = { activity.finish() }) { Text("‹ Settings") }
         Text("App Updates", style = MaterialTheme.typography.headlineMedium)
         Text("GlucoTrail")
-        Text("Current version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        Text("Current version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) — ${BuildConfig.UPDATE_CHANNEL} build")
         Text("Latest version: ${state.release?.let { "${it.version} (${it.code})" } ?: "Not available"}")
         Toggle("Automatically check for updates", automatic, !state.busy) {
             automatic = it
@@ -154,16 +154,35 @@ private fun UpdateScreen(vm: UpdatesViewModel, activity: AppUpdatesActivity) {
         TextButton(onClick = {
             activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName))
         }) { Text("Android notification settings") }
-        Toggle("Include beta releases", beta, !state.busy) {
-            beta = it
-            prefs.edit().putBoolean("beta", it).apply()
-            vm.check(it)
+        Text("Release channel", style = MaterialTheme.typography.titleMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = channel == ReleaseChannel.PRODUCTION,
+                onClick = {
+                    channel = ReleaseChannel.PRODUCTION
+                    UpdateScheduler.setChannel(activity, channel)
+                    vm.check(channel)
+                },
+                label = { Text("Production") },
+                enabled = !state.busy
+            )
+            FilterChip(
+                selected = channel == ReleaseChannel.DEV,
+                onClick = {
+                    channel = ReleaseChannel.DEV
+                    UpdateScheduler.setChannel(activity, channel)
+                    vm.check(channel)
+                },
+                label = { Text("Dev") },
+                enabled = !state.busy
+            )
         }
+        Text("Production shows stable releases; Dev shows preview/prerelease builds.")
         Text("Automatic checks run about once a day when Android permits. Downloads only start when you choose.")
         val checked = prefs.getLong("checked", 0)
         Text("Last successful check: " + if (checked == 0L) "Never" else DateFormat.getDateTimeInstance().format(Date(checked)))
         prefs.getString("error", null)?.let { Text("Last background check: $it") }
-        Button(onClick = { vm.check(beta) }, enabled = !state.busy) { Text("Check for updates") }
+        Button(onClick = { vm.check(channel) }, enabled = !state.busy) { Text("Check for updates") }
         Text(state.message)
         state.progress?.let {
             LinearProgressIndicator(progress = { it }, modifier = Modifier.fillMaxWidth())

@@ -89,20 +89,23 @@ class GitHubUpdates(private val context: Context) {
         return out.toString("UTF-8")
     }
 
-    suspend fun latest(beta: Boolean): AppRelease? = withContext(Dispatchers.IO) {
+    suspend fun latest(channel: ReleaseChannel): AppRelease? = withContext(Dispatchers.IO) {
         val found = mutableListOf<AppRelease>()
         // A bounded scan of recent releases; select by Android versionCode, never lexicographic tags.
         val releases = JSONArray(text("$api?per_page=100", 8 * 1024 * 1024))
         for (i in 0 until releases.length()) {
             val release = releases.getJSONObject(i)
-            if (release.optBoolean("draft") || (!beta && release.optBoolean("prerelease"))) continue
+            if (release.optBoolean("draft")) continue
+            val prerelease = release.optBoolean("prerelease")
+            if (channel == ReleaseChannel.PRODUCTION && prerelease) continue
+            if (channel == ReleaseChannel.DEV && !prerelease) continue
             val assets = release.getJSONArray("assets")
             val byName = (0 until assets.length()).map { assets.getJSONObject(it) }.associateBy { it.getString("name") }
             val manifest = byName["update.json"] ?: continue
             val manifestUrl = manifest.getString("browser_download_url")
             require(UpdatePolicy.assetUrl(manifestUrl)) { "Invalid update manifest URL" }
             val metadata = JSONObject(text(manifestUrl, 16 * 1024))
-            require(metadata.getString("applicationId") == context.packageName) { "Release targets a different app" }
+            if (metadata.getString("applicationId") != context.packageName) continue
             val filename = metadata.getString("apk")
             require(Regex("GlucoTrail-[A-Za-z0-9._-]+\\.apk").matches(filename)) { "Invalid APK name" }
             val apk = byName[filename] ?: error("Release is missing its APK")

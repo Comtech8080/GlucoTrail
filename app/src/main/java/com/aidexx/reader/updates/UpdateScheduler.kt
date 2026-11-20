@@ -22,6 +22,19 @@ import kotlinx.coroutines.*
 object UpdateScheduler {
     private const val JOB = 7319
     fun preferences(context: Context) = context.getSharedPreferences("github_updates", Context.MODE_PRIVATE)
+
+    fun channel(context: Context): ReleaseChannel {
+        val prefs = preferences(context)
+        val stored = prefs.getString("channel", null)
+        if (stored != null) return ReleaseChannel.fromKey(stored)
+        // Legacy: the old "Include beta releases" flag maps to the Dev channel.
+        if (prefs.getBoolean("beta", false)) return ReleaseChannel.DEV
+        return ReleaseChannel.fromKey(BuildConfig.UPDATE_CHANNEL)
+    }
+
+    fun setChannel(context: Context, channel: ReleaseChannel) {
+        preferences(context).edit().putString("channel", channel.key).apply()
+    }
     fun schedule(context: Context) {
         val scheduler = context.getSystemService(JobScheduler::class.java)
         if (!preferences(context).getBoolean("automatic", true)) {
@@ -67,11 +80,11 @@ class UpdateCheckService : JobService() {
         job = CoroutineScope(SupervisorJob() + Dispatchers.Main).launch {
             var retry = false
             try {
-                val beta = prefs.getBoolean("beta", false)
-                val release = GitHubUpdates(applicationContext).latest(beta)
+                val channel = UpdateScheduler.channel(this@UpdateCheckService)
+                val release = GitHubUpdates(applicationContext).latest(channel)
                 prefs.edit().putLong("checked", System.currentTimeMillis()).remove("error").apply()
                 // Respect settings that changed while the request was running.
-                if (release != null && release.code > BuildConfig.VERSION_CODE && beta == prefs.getBoolean("beta", false)) {
+                if (release != null && release.code > BuildConfig.VERSION_CODE && channel == UpdateScheduler.channel(this@UpdateCheckService)) {
                     UpdateScheduler.notify(this@UpdateCheckService, release)
                 }
             } catch (cancelled: CancellationException) { throw cancelled

@@ -60,12 +60,25 @@ jobs:
           GLUCOTRAIL_STORE_PASSWORD: ${{ secrets.GLUCOTRAIL_STORE_PASSWORD }}
           GLUCOTRAIL_KEY_ALIAS: ${{ secrets.GLUCOTRAIL_KEY_ALIAS }}
           GLUCOTRAIL_KEY_PASSWORD: ${{ secrets.GLUCOTRAIL_KEY_PASSWORD }}
-        run: sh ./gradlew testDebugUnitTest lintRelease assembleRelease
+        run: |
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            sh ./gradlew testDebugUnitTest lintRelease assembleDevRelease
+          else
+            sh ./gradlew testDebugUnitTest lintRelease assembleProductionRelease
+          fi
       - name: Verify and package release assets
         shell: bash
         run: |
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose app/build/outputs/apk/release/app-release.apk
-          python3 tools/package_release.py "$RELEASE_TAG"
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            FLAVOR=dev
+            APP_ID=com.aidexx.reader.dev
+          else
+            FLAVOR=production
+            APP_ID=com.aidexx.reader
+          fi
+          APK=$(find "app/build/outputs/apk/$FLAVOR/release" -maxdepth 1 -name '*.apk' ! -name '*-unsigned.apk' -print -quit)
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          python3 tools/package_release.py "$RELEASE_TAG" --output "app/build/outputs/apk/$FLAVOR/release" --application-id "$APP_ID"
       - name: Publish complete assets as a draft
         env:
           GH_TOKEN: ${{ github.token }}

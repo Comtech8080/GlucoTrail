@@ -18,9 +18,9 @@ class PackagingTests(unittest.TestCase):
             {"versionCode": 99, "versionName": "0.1.60.20", "filters": [], "outputFile": "app-release.apk"}]}
         (self.output / "app-release.apk").write_bytes(b"test payload")
 
-    def run_package(self, tag="v0.1.60.20"):
+    def run_package(self, tag="v0.1.60.20", application_id="com.aidexx.reader"):
         (self.output / "output-metadata.json").write_text(json.dumps(self.metadata))
-        package(tag, self.output, self.dist)
+        package(tag, self.output, self.dist, application_id=application_id)
 
     def test_metadata_and_checksum_match_apk(self):
         self.run_package()
@@ -38,6 +38,13 @@ class PackagingTests(unittest.TestCase):
         self.metadata["applicationId"] = "other.app"
         with self.assertRaises(ValueError):
             self.run_package()
+
+    def test_dev_application_id(self):
+        self.metadata["applicationId"] = "com.aidexx.reader.dev"
+        self.metadata["elements"][0]["versionName"] = "0.1.60.21-dev"
+        self.run_package(tag="v0.1.60.21-dev", application_id="com.aidexx.reader.dev")
+        manifest = json.loads((self.dist / "update.json").read_text())
+        self.assertEqual("com.aidexx.reader.dev", manifest["applicationId"])
 
     def test_unsigned_is_refused(self):
         self.metadata["elements"][0]["outputFile"] = "app-release-unsigned.apk"

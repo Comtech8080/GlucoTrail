@@ -18,8 +18,8 @@ sh ./gradlew testDebugUnitTest assembleDebug
 On Windows use `gradlew.bat`. Set `ANDROID_HOME` or an untracked `local.properties`
 with `sdk.dir`. Debug builds and validation need no signing secrets.
 
-App Updates checks public releases in `Comtech8080/GlucoTrail`, supports stable
-and beta channels, displays release notes, downloads on request, and validates
+App Updates checks public releases in `Comtech8080/GlucoTrail`, supports Production
+and Dev channels, displays release notes, downloads on request, and validates
 SHA-256, package identity, version, and the current signing certificate before
 opening Android's installation screen. Automatic daily checks use Android's
 persisted JobScheduler and respect the notification preference and Android permissions.

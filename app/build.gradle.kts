@@ -12,10 +12,24 @@ android {
         applicationId = "com.aidexx.reader"
         minSdk = 26
         targetSdk = 36
-        versionCode = 107
-        versionName = "0.1.60.28"
+        versionCode = 108
+        versionName = "0.1.60.29"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "channel"
+    productFlavors {
+        create("production") {
+            dimension = "channel"
+            buildConfigField("String", "UPDATE_CHANNEL", "\"production\"")
+        }
+        create("dev") {
+            dimension = "channel"
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+            buildConfigField("String", "UPDATE_CHANNEL", "\"dev\"")
+        }
     }
 
     // No fallback signing key: releases must match the certificate already on the phone.
