@@ -10,6 +10,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aidexx.reader.ble.AidexActivator
 import com.aidexx.reader.ble.AidexBleScanner
+import com.aidexx.reader.ble.GlucoRingBleAdvertiser
 import com.aidexx.reader.ble.AidexHistoryBackfillClient
 import com.aidexx.reader.ble.HistoryBackfillStage
 import com.aidexx.reader.ble.HistoryBackfillState
@@ -53,6 +54,7 @@ data class GlucoseLimits(
 class AidexViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("aidexx_reader", 0)
     private val historyDb = AidexHistoryDatabase(app.applicationContext)
+    private val glucoRing = GlucoRingBleAdvertiser(app.applicationContext)
 
     val scanner = AidexBleScanner(app)
     val activator = AidexActivator(app)
@@ -1412,9 +1414,24 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
             .associateBy { it.serial.uppercase() }
     }
 
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            combinedRecentHistory.collect { readings ->
+                readings.lastOrNull()?.let { latest ->
+                    glucoRing.publishReading(
+                        glucoseMgDl = latest.glucoseMgDl,
+                        trendRaw = latest.trendRaw,
+                        valid = latest.valid
+                    )
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         scanner.stop()
+        glucoRing.stop()
         activator.cancel()
         historyBackfill.cancel()
         historyDb.close()

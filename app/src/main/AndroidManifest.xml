@@ -92,4 +92,5 @@
         </receiver>
     </application>
 
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" android:maxSdkVersion="33" />
 </manifest>
