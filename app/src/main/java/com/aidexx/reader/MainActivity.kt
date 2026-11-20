@@ -151,7 +151,8 @@ private enum class Screen {
     SETTINGS_FITNESS,
     SETTINGS_INSULIN,
     SETTINGS_BACKUP,
-    SETTINGS_APPEARANCE
+    SETTINGS_APPEARANCE,
+    SETTINGS_GLUCORING
 }
 
 @Composable
@@ -186,6 +187,7 @@ private fun AidexApp(vm: AidexViewModel) {
     val glucoseUnit by vm.glucoseUnit.collectAsState()
     val glucoseLimits by vm.glucoseLimits.collectAsState()
     val alarmSettings by vm.alarmSettings.collectAsState()
+    val glucoRingEnabled by vm.glucoRingEnabled.collectAsState()
     val historyBySerial by vm.historyBySerial.collectAsState()
     val combinedRecentHistory by
         vm.combinedRecentHistory
@@ -340,7 +342,8 @@ private fun AidexApp(vm: AidexViewModel) {
                 Screen.SETTINGS_FITNESS,
                 Screen.SETTINGS_INSULIN,
                 Screen.SETTINGS_BACKUP,
-                Screen.SETTINGS_APPEARANCE ->
+                Screen.SETTINGS_APPEARANCE,
+                Screen.SETTINGS_GLUCORING ->
                     false
             }
 
@@ -643,6 +646,21 @@ private fun AidexApp(vm: AidexViewModel) {
 
                                 screen =
                                     Screen.SETTINGS_GLUCOSE
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "GlucoRing  ›"
+                                )
+                            },
+                            onClick = {
+                                settingsExpanded =
+                                    false
+
+                                screen =
+                                    Screen.SETTINGS_GLUCORING
                             }
                         )
 
@@ -1049,6 +1067,17 @@ private fun AidexApp(vm: AidexViewModel) {
                                     mode ->
                                 vm.setThemeMode(
                                     mode
+                                )
+                            }
+                        )
+
+                    Screen.SETTINGS_GLUCORING ->
+                        GlucoRingSettingsScreen(
+                            enabled =
+                                glucoRingEnabled,
+                            onEnabledChanged = {
+                                vm.setGlucoRingEnabled(
+                                    it
                                 )
                             }
                         )
@@ -2434,6 +2463,102 @@ private fun GlucoseSettingsScreen(
                 "Edit Glucose Limits"
             )
         }
+    }
+}
+
+@Composable
+private fun GlucoRingSettingsScreen(
+    enabled: Boolean,
+    onEnabledChanged: (Boolean) -> Unit
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .padding(
+                    top = 4.dp
+                )
+    ) {
+        SettingsPageHeader(
+            title = "GlucoRing",
+            description =
+                "Broadcast the latest glucose reading over BLE so a nearby GlucoRing display can pick it up."
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(
+                Modifier.weight(1f)
+            ) {
+                Text(
+                    "Broadcast to GlucoRing",
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(
+                    Modifier.height(2.dp)
+                )
+
+                Text(
+                    "Advertises glucose, trend, quality, and sensor age over BLE service data. GlucoRing scans and displays it.",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall,
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
+                )
+            }
+
+            Spacer(
+                Modifier.width(12.dp)
+            )
+
+            Switch(
+                checked = enabled,
+                onCheckedChange = onEnabledChanged
+            )
+        }
+
+        Spacer(
+            Modifier.height(18.dp)
+        )
+
+        HorizontalDivider()
+
+        Spacer(
+            Modifier.height(18.dp)
+        )
+
+        Text(
+            "Service UUID",
+            style =
+                MaterialTheme
+                    .typography
+                    .titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        Spacer(
+            Modifier.height(4.dp)
+        )
+
+        Text(
+            "4fafc201-1fb5-459e-8fcc-c5c9c331914b",
+            style =
+                MaterialTheme
+                    .typography
+                    .bodySmall,
+            color =
+                MaterialTheme
+                    .colorScheme
+                    .onSurfaceVariant
+        )
     }
 }
 

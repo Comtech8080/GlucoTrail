@@ -112,6 +112,11 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         if (key == "replacement_auto_handover") {
             _autoHandoverEnabled.value = prefs.getBoolean("replacement_auto_handover", false)
         }
+        if (key == "glucoring_enabled") {
+            val enabled = prefs.getBoolean("glucoring_enabled", true)
+            _glucoRingEnabled.value = enabled
+            glucoRing.setEnabled(enabled)
+        }
     }
 
     private val _replacementSerial = MutableStateFlow(
@@ -126,6 +131,28 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     fun setAutoHandoverEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("replacement_auto_handover", enabled).apply()
         _autoHandoverEnabled.value = enabled
+    }
+
+    private val _glucoRingEnabled = MutableStateFlow(
+        prefs.getBoolean("glucoring_enabled", true)
+    )
+    val glucoRingEnabled: StateFlow<Boolean> = _glucoRingEnabled.asStateFlow()
+
+    fun setGlucoRingEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("glucoring_enabled", enabled).apply()
+        _glucoRingEnabled.value = enabled
+        glucoRing.setEnabled(enabled)
+        if (enabled) {
+            combinedRecentHistory.value.lastOrNull()?.let { latest ->
+                glucoRing.publishReading(
+                    glucoseMgDl = latest.glucoseMgDl,
+                    trendRaw = latest.trendRaw,
+                    quality = latest.quality,
+                    sensorMinute = latest.sensorMinute,
+                    valid = latest.valid
+                )
+            }
+        }
     }
 
     private val _overlapComparison =
@@ -1418,11 +1445,15 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             combinedRecentHistory.collect { readings ->
                 readings.lastOrNull()?.let { latest ->
-                    glucoRing.publishReading(
-                        glucoseMgDl = latest.glucoseMgDl,
-                        trendRaw = latest.trendRaw,
-                        valid = latest.valid
-                    )
+                    if (_glucoRingEnabled.value) {
+                        glucoRing.publishReading(
+                            glucoseMgDl = latest.glucoseMgDl,
+                            trendRaw = latest.trendRaw,
+                            quality = latest.quality,
+                            sensorMinute = latest.sensorMinute,
+                            valid = latest.valid
+                        )
+                    }
                 }
             }
         }
