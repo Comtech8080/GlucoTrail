@@ -20,6 +20,7 @@ import com.aidexx.reader.alarm.AlarmPreferences
 import com.aidexx.reader.alarm.AlarmSettings
 import com.aidexx.reader.data.AidexHistoryDatabase
 import com.aidexx.reader.data.CalibrationEvent
+import com.aidexx.reader.data.CalibrationTimeline
 import com.aidexx.reader.data.HistoryAutoRecoverySnapshot
 import com.aidexx.reader.data.HistoryAutoRecoveryStatus
 import com.aidexx.reader.data.HistoryDatabaseEvents
@@ -1446,20 +1447,29 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            combinedRecentHistory.collect { readings ->
-                readings.lastOrNull()?.let { latest ->
-                    if (_glucoRingEnabled.value) {
-                        glucoRing.publishReading(
-                            glucoseMgDl = latest.glucoseMgDl,
-                            trendRaw = latest.trendRaw,
-                            quality = latest.quality,
-                            sensorMinute = latest.sensorMinute,
-                            valid = latest.valid,
-                            mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
-                            lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
-                            highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
+            scanner.sensors.collect { sensors ->
+                val serial = _selectedSerial.value?.uppercase()
+                val raw = sensors
+                    .filter { it.serial.uppercase() == serial }
+                    .mapNotNull { it.reading }
+                    .filter { it.crcValid && it.valid && !it.isWarmup }
+                    .maxByOrNull { it.sensorMinute }
+                if (raw != null && _glucoRingEnabled.value) {
+                    val reading =
+                        CalibrationTimeline.applyReading(
+                            raw,
+                            _calibrationEvents.value
                         )
-                    }
+                    glucoRing.publishReading(
+                        glucoseMgDl = reading.glucoseMgDl,
+                        trendRaw = reading.trendRaw,
+                        quality = reading.quality,
+                        sensorMinute = reading.sensorMinute,
+                        valid = reading.valid,
+                        mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
+                        lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
+                        highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
+                    )
                 }
             }
         }
