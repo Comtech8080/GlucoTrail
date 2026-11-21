@@ -78,7 +78,9 @@ class AlarmMonitorService : Service() {
                             Dispatchers.IO
                         ) {
                             publishToRing(
-                                latest
+                                latest,
+                                force =
+                                    true
                             )
                         }
                     }
@@ -502,6 +504,9 @@ class AlarmMonitorService : Service() {
         disconnectedJob?.cancel()
         watchdogJob?.cancel()
         scanner.stop()
+
+        lastRingReading =
+            null
 
         postWarmupRecoveryActive =
             false
@@ -1867,7 +1872,31 @@ class AlarmMonitorService : Service() {
         )
     }
 
-    private fun publishToRing(reading: AidexReading) {
+    private fun publishToRing(
+        reading: AidexReading,
+        force: Boolean = false
+    ) {
+        val last =
+            lastRingReading
+
+        /*
+         * The scanner re-emits its sensor list on every RSSI change, not just
+         * on a new sensor minute. Skip re-publishing the same reading so we
+         * don't churn the BLE advertiser with redundant stop/start cycles,
+         * which can trip ADVERTISE_FAILED_TOO_MANY_ADVERTISERS and leave the
+         * ring stale.
+         */
+        if (
+            !force &&
+            last != null &&
+            last.sensorMinute ==
+                reading.sensorMinute &&
+            last.glucoseMgDl ==
+                reading.glucoseMgDl
+        ) {
+            return
+        }
+
         val prefs =
             getSharedPreferences(
                 APP_PREFS,
