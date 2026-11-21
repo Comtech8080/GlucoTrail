@@ -6,6 +6,8 @@ import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import android.util.Log
 import java.util.UUID
@@ -101,6 +103,35 @@ class GlucoRingBleAdvertiser(context: Context) {
         // leaves the ring stuck on the previous reading.
         stopAdvertising()
 
+        // stopAdvertising() is asynchronous; starting immediately can fail with
+        // ADVERTISE_FAILED_TOO_MANY_ADVERTISERS while the old slot is released.
+        // Pause briefly so the BLE stack frees the slot before we restart.
+        try {
+            Thread.sleep(200L)
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        }
+
+        startAdvertising(
+            adv,
+            settings,
+            data,
+            glucoseMgDl,
+            trendRaw,
+            quality,
+            attemptsLeft = 1
+        )
+    }
+
+    private fun startAdvertising(
+        adv: BluetoothLeAdvertiser,
+        settings: AdvertiseSettings,
+        data: AdvertiseData,
+        glucoseMgDl: Int,
+        trendRaw: Int,
+        quality: Int,
+        attemptsLeft: Int
+    ) {
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
                 Log.i(
@@ -110,6 +141,20 @@ class GlucoRingBleAdvertiser(context: Context) {
             }
             override fun onStartFailure(errorCode: Int) {
                 Log.e("GlucoRing", "Advertise failed: $errorCode")
+                activeCallback = null
+                if (attemptsLeft > 0) {
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        startAdvertising(
+                            adv,
+                            settings,
+                            data,
+                            glucoseMgDl,
+                            trendRaw,
+                            quality,
+                            attemptsLeft - 1
+                        )
+                    }, 500L)
+                }
             }
         }
         activeCallback = callback
