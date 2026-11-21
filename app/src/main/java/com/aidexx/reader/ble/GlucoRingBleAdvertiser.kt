@@ -44,6 +44,9 @@ class GlucoRingBleAdvertiser(context: Context) {
     @Volatile
     private var enabled = true
 
+    @Volatile
+    private var activeCallback: AdvertiseCallback? = null
+
     fun setEnabled(value: Boolean) {
         enabled = value
         if (!value) stop()
@@ -92,26 +95,41 @@ class GlucoRingBleAdvertiser(context: Context) {
             .addServiceData(ParcelUuid(SERVICE_UUID), payload)
             .build()
 
+        // Replace any in-flight advertisement so the payload actually updates.
+        // Calling startAdvertising() repeatedly without stopping the old one can
+        // fail with ADVERTISE_FAILED_TOO_MANY_ADVERTISERS on some devices, which
+        // leaves the ring stuck on the previous reading.
+        stopAdvertising()
+
+        val callback = object : AdvertiseCallback() {
+            override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
+                Log.i(
+                    "GlucoRing",
+                    "Reading advertised: $glucoseMgDl mg/dL, trend $trendRaw, quality $quality"
+                )
+            }
+            override fun onStartFailure(errorCode: Int) {
+                Log.e("GlucoRing", "Advertise failed: $errorCode")
+            }
+        }
+        activeCallback = callback
+
         try {
-            adv.startAdvertising(settings, data, object : AdvertiseCallback() {
-                override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
-                    Log.i(
-                        "GlucoRing",
-                        "Reading advertised: $glucoseMgDl mg/dL, trend $trendRaw, quality $quality"
-                    )
-                }
-                override fun onStartFailure(errorCode: Int) {
-                    Log.e("GlucoRing", "Advertise failed: $errorCode")
-                }
-            })
+            adv.startAdvertising(settings, data, callback)
         } catch (e: SecurityException) {
             Log.w("GlucoRing", "BLE advertise permission missing: ${e.message}")
         }
     }
 
     fun stop() {
+        stopAdvertising()
+    }
+
+    private fun stopAdvertising() {
+        val callback = activeCallback ?: return
+        activeCallback = null
         try {
-            advertiser?.stopAdvertising(object : AdvertiseCallback() {})
+            advertiser?.stopAdvertising(callback)
         } catch (e: SecurityException) {
             Log.w("GlucoRing", "BLE advertise permission missing: ${e.message}")
         }
