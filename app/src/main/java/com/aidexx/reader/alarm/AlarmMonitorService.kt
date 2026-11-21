@@ -545,6 +545,25 @@ class AlarmMonitorService : Service() {
         val latest = historyDb.loadLatestReading(selectedSerial)
 
         /*
+         * After a software update the process restarts and the scanner can take
+         * up to a minute to rediscover the sensor. Relay the last known reading
+         * immediately so the ring gets a fresh packet without waiting for the
+         * next live advertisement.
+         */
+        if (
+            latest != null &&
+            (latest.isWarmup || latest.valid)
+        ) {
+            serviceScope.launch(Dispatchers.IO) {
+                publishToRing(
+                    latest,
+                    force =
+                        true
+                )
+            }
+        }
+
+        /*
          * Start a fresh disconnected-alarm window whenever the monitor itself
          * starts so an app update/reboot does not immediately alarm on old data.
          */
