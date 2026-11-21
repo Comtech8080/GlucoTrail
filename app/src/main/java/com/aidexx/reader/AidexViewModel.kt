@@ -1455,17 +1455,36 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
                     .filter { it.crcValid && (it.isWarmup || it.valid) }
                     .maxByOrNull { it.sensorMinute }
                 if (raw != null && _glucoRingEnabled.value) {
-                    val reading =
-                        CalibrationTimeline.applyReading(
-                            raw,
-                            _calibrationEvents.value
+                    val events =
+                        _calibrationEvents.value
+
+                    /*
+                     * Use the most recent calibration directly. The dashboard
+                     * hero and the ring must agree on the *current* reading,
+                     * so we deliberately avoid the wall-clock-gated eventFor()
+                     * lookup that can drop the offset after a clock change.
+                     */
+                    val calibratedMgDl =
+                        Math.round(
+                            CalibrationTimeline.applyLatestMgDl(
+                                raw.glucoseMgDl
+                                    .toDouble(),
+                                events
+                            )
                         )
+                            .toInt()
+
+                    android.util.Log.d(
+                        "GlucoRingBroadcast",
+                        "serial=$serial raw=${raw.glucoseMgDl} events=${events.size} offsets=${events.map { it.offsetMgDl }} calibrated=$calibratedMgDl"
+                    )
+
                     glucoRing.publishReading(
-                        glucoseMgDl = reading.glucoseMgDl,
-                        trendRaw = reading.trendRaw,
-                        quality = reading.quality,
-                        sensorMinute = reading.sensorMinute,
-                        valid = reading.valid,
+                        glucoseMgDl = calibratedMgDl,
+                        trendRaw = raw.trendRaw,
+                        quality = raw.quality,
+                        sensorMinute = raw.sensorMinute,
+                        valid = raw.valid,
                         mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
                         lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
                         highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()

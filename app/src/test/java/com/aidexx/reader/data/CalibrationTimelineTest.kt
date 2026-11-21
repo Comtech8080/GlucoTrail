@@ -185,4 +185,66 @@ class CalibrationTimelineTest {
             adjusted.glucoseMgDl
         )
     }
+
+    @Test
+    fun applyLatestMgDlUsesMostRecentOffsetRegardlessOfWallClock() {
+        // A calibration saved just before a phone clock correction can end up
+        // with an effectiveAtMs that looks later than a fresh reading. The ring
+        // relay must still apply the newest offset, unlike the timestamp-gated
+        // eventFor() which would drop it.
+        val events =
+            listOf(
+                event(
+                    10_000L,
+                    18
+                ),
+                event(
+                    20_000L,
+                    36
+                )
+            )
+
+        assertEquals(
+            216.0,
+            CalibrationTimeline
+                .applyLatestMgDl(
+                    rawMgDl =
+                        180.0,
+                    events =
+                        events
+                ),
+            0.001
+        )
+
+        // Same inputs, but the timestamp-gated path drops the newer event for a
+        // reading stamped before it (e.g. after a clock correction).
+        assertEquals(
+            198.0,
+            CalibrationTimeline
+                .applyMgDl(
+                    rawMgDl =
+                        180.0,
+                    receivedAtMs =
+                        15_000L,
+                    events =
+                        events
+                ),
+            0.001
+        )
+    }
+
+    @Test
+    fun applyLatestMgDlWithoutEventsReturnsRaw() {
+        assertEquals(
+            180.0,
+            CalibrationTimeline
+                .applyLatestMgDl(
+                    rawMgDl =
+                        180.0,
+                    events =
+                        emptyList()
+                ),
+            0.001
+        )
+    }
 }

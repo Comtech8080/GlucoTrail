@@ -33,6 +33,40 @@ object CalibrationTimeline {
                 it.effectiveAtMs
             }
 
+    /*
+     * The BLE ring relay always sends the *current* live reading, so it must
+     * use the most recent calibration regardless of wall-clock quirks. The
+     * timestamp-filtered eventFor() above can silently return null when the
+     * phone clock changes (NTP/timezone) after a calibration was saved, which
+     * made the ring show the raw value while the dashboard showed the
+     * calibrated one.
+     */
+    fun latestEvent(
+        events: List<CalibrationEvent>
+    ): CalibrationEvent? =
+        events.maxByOrNull {
+            it.effectiveAtMs
+        }
+
+    fun applyLatestMgDl(
+        rawMgDl: Double,
+        events: List<CalibrationEvent>
+    ): Double {
+        val event =
+            latestEvent(
+                events
+            ) ?: return rawMgDl
+
+        return (
+            rawMgDl +
+                event.offsetMgDl
+        )
+            .coerceIn(
+                MIN_DISPLAY_MGDL,
+                MAX_DISPLAY_MGDL
+            )
+    }
+
     fun applyMgDl(
         rawMgDl: Double,
         receivedAtMs: Long,
