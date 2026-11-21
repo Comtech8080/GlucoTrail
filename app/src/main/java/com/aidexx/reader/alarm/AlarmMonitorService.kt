@@ -1588,6 +1588,21 @@ class AlarmMonitorService : Service() {
         lastPacketSeenAtMs =
             System.currentTimeMillis()
 
+        /*
+         * The ring relay normally follows the passive scanner, but that can
+         * stall while the connected F003 stream keeps delivering fresh
+         * readings. Publish live GATT readings too so the ring always tracks
+         * the newest value (older scanner packets are dropped by publishToRing).
+         */
+        if (
+            reading.isWarmup ||
+            reading.valid
+        ) {
+            publishToRing(
+                reading
+            )
+        }
+
         maybeAutomaticallyRecoverHistory(
             sensor =
                 sensor,
@@ -1927,18 +1942,24 @@ class AlarmMonitorService : Service() {
 
         /*
          * The scanner re-emits its sensor list on every RSSI change, not just
-         * on a new sensor minute. Skip re-publishing the same reading so we
-         * don't churn the BLE advertiser with redundant stop/start cycles,
-         * which can trip ADVERTISE_FAILED_TOO_MANY_ADVERTISERS and leave the
-         * ring stale.
+         * on a new sensor minute. Skip re-publishing the same reading (to avoid
+         * churning the BLE advertiser with redundant stop/start cycles) and
+         * skip older readings so a stalled passive scanner never overwrites a
+         * fresher F003 live reading.
          */
         if (
             !force &&
             last != null &&
-            last.sensorMinute ==
-                reading.sensorMinute &&
-            last.glucoseMgDl ==
-                reading.glucoseMgDl
+            (
+                reading.sensorMinute <
+                    last.sensorMinute ||
+                (
+                    reading.sensorMinute ==
+                        last.sensorMinute &&
+                    reading.glucoseMgDl ==
+                        last.glucoseMgDl
+                )
+            )
         ) {
             return
         }
