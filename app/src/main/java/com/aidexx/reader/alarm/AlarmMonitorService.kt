@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import android.os.PowerManager
+import android.content.SharedPreferences
+import com.aidexx.reader.GlucoseUnit
+import com.aidexx.reader.ble.GlucoRingBleAdvertiser
 import com.aidexx.reader.ble.AidexBackgroundScanManager
 import com.aidexx.reader.ble.AidexBleScanner
 import com.aidexx.reader.ble.AidexHistoryBackfillClient
@@ -42,6 +45,46 @@ class AlarmMonitorService : Service() {
 
     private lateinit var liveGatt:
         AidexLiveGattClient
+
+    private lateinit var glucoRing:
+        GlucoRingBleAdvertiser
+
+    @Volatile
+    private var lastRingReading:
+        AidexReading? =
+        null
+
+    private val ringPrefsListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == "glucoring_enabled") {
+                val enabled =
+                    getSharedPreferences(
+                        APP_PREFS,
+                        Context.MODE_PRIVATE
+                    )
+                        .getBoolean(
+                            "glucoring_enabled",
+                            true
+                        )
+                glucoRing.setEnabled(enabled)
+                if (enabled && selectedSerial.isNotBlank()) {
+                    val latest =
+                        lastRingReading
+                            ?: historyDb.loadLatestReading(
+                                selectedSerial
+                            )
+                    if (latest != null) {
+                        serviceScope.launch(
+                            Dispatchers.IO
+                        ) {
+                            publishToRing(
+                                latest
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
     private var monitorWakeLock:
         PowerManager.WakeLock? =
@@ -116,6 +159,27 @@ class AlarmMonitorService : Service() {
             AidexHistoryDatabase(
                 applicationContext
             )
+
+        glucoRing =
+            GlucoRingBleAdvertiser(
+                applicationContext
+            )
+
+        getSharedPreferences(
+            APP_PREFS,
+            Context.MODE_PRIVATE
+        )
+            .apply {
+                glucoRing.setEnabled(
+                    getBoolean(
+                        "glucoring_enabled",
+                        true
+                    )
+                )
+                registerOnSharedPreferenceChangeListener(
+                    ringPrefsListener
+                )
+            }
 
         historyBackfill =
             AidexHistoryBackfillClient(
@@ -572,6 +636,21 @@ class AlarmMonitorService : Service() {
                 val reading =
                     sensor.reading
                         ?: return@collect
+
+                /*
+                 * Relay the reading to GlucoRing from the foreground service so
+                 * the broadcast survives activity destruction in the background.
+                 * Warm-up readings are included so the ring can show its
+                 * warm-up countdown.
+                 */
+                if (
+                    reading.isWarmup ||
+                    reading.valid
+                ) {
+                    publishToRing(
+                        reading
+                    )
+                }
 
                 lastPacketSeenAtMs =
                     System.currentTimeMillis()
@@ -1788,6 +1867,98 @@ class AlarmMonitorService : Service() {
         )
     }
 
+    private fun publishToRing(reading: AidexReading) {
+        val prefs =
+            getSharedPreferences(
+                APP_PREFS,
+                Context.MODE_PRIVATE
+            )
+
+        if (
+            !prefs.getBoolean(
+                "glucoring_enabled",
+                true
+            )
+        ) {
+            glucoRing.setEnabled(false)
+            return
+        }
+
+        glucoRing.setEnabled(true)
+
+        /*
+         * Use the most recent calibration directly (the same policy as the
+         * dashboard hero) so the ring never falls back to a raw value after a
+         * phone clock correction.
+         */
+        val events =
+            historyDb.loadCalibrations(
+                selectedSerial
+            )
+
+        val ringMgDl =
+            Math.round(
+                CalibrationTimeline.applyLatestMgDl(
+                    reading.glucoseMgDl
+                        .toDouble(),
+                    events
+                )
+            )
+                .toInt()
+
+        val mmol =
+            (
+                prefs.getString(
+                    "glucose_unit",
+                    GlucoseUnit.MMOL_L.name
+                ) ?: GlucoseUnit.MMOL_L.name
+            ) == GlucoseUnit.MMOL_L.name
+
+        val lowMgDl =
+            Math.round(
+                (
+                    prefs.getString(
+                        "low_glucose_mmol",
+                        null
+                    )?.toDoubleOrNull() ?: 3.9
+                ) * GlucoseUnit.MG_DL_PER_MMOL_L
+            )
+                .toInt()
+
+        val highMgDl =
+            Math.round(
+                (
+                    prefs.getString(
+                        "high_glucose_mmol",
+                        null
+                    )?.toDoubleOrNull() ?: 10.0
+                ) * GlucoseUnit.MG_DL_PER_MMOL_L
+            )
+                .toInt()
+
+        glucoRing.publishReading(
+            glucoseMgDl =
+                ringMgDl,
+            trendRaw =
+                reading.trendRaw,
+            quality =
+                reading.quality,
+            sensorMinute =
+                reading.sensorMinute,
+            valid =
+                reading.valid,
+            mmol =
+                mmol,
+            lowMgDl =
+                lowMgDl,
+            highMgDl =
+                highMgDl
+        )
+
+        lastRingReading =
+            reading
+    }
+
     override fun onDestroy() {
         ContinuousMonitoringStatus
             .markStopped(
@@ -1798,6 +1969,16 @@ class AlarmMonitorService : Service() {
         scanner.stop()
 
         liveGatt.stop()
+
+        glucoRing.stop()
+
+        getSharedPreferences(
+            APP_PREFS,
+            Context.MODE_PRIVATE
+        )
+            .unregisterOnSharedPreferenceChangeListener(
+                ringPrefsListener
+            )
 
         releaseMonitoringWakeLock()
 

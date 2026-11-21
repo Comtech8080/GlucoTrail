@@ -10,7 +10,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aidexx.reader.ble.AidexActivator
 import com.aidexx.reader.ble.AidexBleScanner
-import com.aidexx.reader.ble.GlucoRingBleAdvertiser
 import com.aidexx.reader.ble.AidexHistoryBackfillClient
 import com.aidexx.reader.ble.HistoryBackfillStage
 import com.aidexx.reader.ble.HistoryBackfillState
@@ -20,7 +19,6 @@ import com.aidexx.reader.alarm.AlarmPreferences
 import com.aidexx.reader.alarm.AlarmSettings
 import com.aidexx.reader.data.AidexHistoryDatabase
 import com.aidexx.reader.data.CalibrationEvent
-import com.aidexx.reader.data.CalibrationTimeline
 import com.aidexx.reader.data.HistoryAutoRecoverySnapshot
 import com.aidexx.reader.data.HistoryAutoRecoveryStatus
 import com.aidexx.reader.data.HistoryDatabaseEvents
@@ -55,7 +53,6 @@ data class GlucoseLimits(
 class AidexViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("aidexx_reader", 0)
     private val historyDb = AidexHistoryDatabase(app.applicationContext)
-    private val glucoRing = GlucoRingBleAdvertiser(app.applicationContext)
 
     val scanner = AidexBleScanner(app)
     val activator = AidexActivator(app)
@@ -116,7 +113,6 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
         if (key == "glucoring_enabled") {
             val enabled = prefs.getBoolean("glucoring_enabled", true)
             _glucoRingEnabled.value = enabled
-            glucoRing.setEnabled(enabled)
         }
     }
 
@@ -140,23 +136,10 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
     val glucoRingEnabled: StateFlow<Boolean> = _glucoRingEnabled.asStateFlow()
 
     fun setGlucoRingEnabled(enabled: Boolean) {
+        // The foreground monitoring service owns the BLE advertiser; the pref
+        // change wakes its listener so toggling takes effect immediately.
         prefs.edit().putBoolean("glucoring_enabled", enabled).apply()
         _glucoRingEnabled.value = enabled
-        glucoRing.setEnabled(enabled)
-        if (enabled) {
-            combinedRecentHistory.value.lastOrNull()?.let { latest ->
-                glucoRing.publishReading(
-                    glucoseMgDl = latest.glucoseMgDl,
-                    trendRaw = latest.trendRaw,
-                    quality = latest.quality,
-                    sensorMinute = latest.sensorMinute,
-                    valid = latest.valid,
-                    mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
-                    lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
-                    highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
-                )
-            }
-        }
     }
 
     private val _overlapComparison =
@@ -1445,59 +1428,9 @@ class AidexViewModel(app: Application) : AndroidViewModel(app) {
             .associateBy { it.serial.uppercase() }
     }
 
-    init {
-        viewModelScope.launch(Dispatchers.IO) {
-            scanner.sensors.collect { sensors ->
-                val serial = _selectedSerial.value?.uppercase()
-                val raw = sensors
-                    .filter { it.serial.uppercase() == serial }
-                    .mapNotNull { it.reading }
-                    .filter { it.crcValid && (it.isWarmup || it.valid) }
-                    .maxByOrNull { it.sensorMinute }
-                if (raw != null && _glucoRingEnabled.value) {
-                    val events =
-                        _calibrationEvents.value
-
-                    /*
-                     * Use the most recent calibration directly. The dashboard
-                     * hero and the ring must agree on the *current* reading,
-                     * so we deliberately avoid the wall-clock-gated eventFor()
-                     * lookup that can drop the offset after a clock change.
-                     */
-                    val calibratedMgDl =
-                        Math.round(
-                            CalibrationTimeline.applyLatestMgDl(
-                                raw.glucoseMgDl
-                                    .toDouble(),
-                                events
-                            )
-                        )
-                            .toInt()
-
-                    android.util.Log.d(
-                        "GlucoRingBroadcast",
-                        "serial=$serial raw=${raw.glucoseMgDl} events=${events.size} offsets=${events.map { it.offsetMgDl }} calibrated=$calibratedMgDl"
-                    )
-
-                    glucoRing.publishReading(
-                        glucoseMgDl = calibratedMgDl,
-                        trendRaw = raw.trendRaw,
-                        quality = raw.quality,
-                        sensorMinute = raw.sensorMinute,
-                        valid = raw.valid,
-                        mmol = _glucoseUnit.value == GlucoseUnit.MMOL_L,
-                        lowMgDl = Math.round(_glucoseLimits.value.lowMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt(),
-                        highMgDl = Math.round(_glucoseLimits.value.highMmol * GlucoseUnit.MG_DL_PER_MMOL_L).toInt()
-                    )
-                }
-            }
-        }
-    }
-
     override fun onCleared() {
         prefs.unregisterOnSharedPreferenceChangeListener(prefsListener)
         scanner.stop()
-        glucoRing.stop()
         activator.cancel()
         historyBackfill.cancel()
         historyDb.close()
