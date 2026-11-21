@@ -306,12 +306,20 @@ private fun AidexApp(vm: AidexViewModel) {
             }
 
     /*
-     * Recent display history is combined across sensor serials. The database
-     * assigns real wall-clock timestamps to live and recovered readings, so a
-     * sensor replacement remains visible as one continuous time-based graph.
+     * The main dashboard shows only the selected (primary) sensor. Filter the
+     * combined history to the selected serial so a replacement sensor doesn't
+     * stretch the graph across two sensors. (Dual Sensor Monitoring keeps its
+     * own two-sensor view.)
      */
     val selectedHistory =
-        combinedRecentHistory
+        combinedRecentHistory.filter {
+            selectedSerial != null &&
+                it.serial.equals(
+                    selectedSerial,
+                    ignoreCase =
+                        true
+                )
+        }
 
     /*
      * The selected sensor is owned by the 24/7 foreground monitoring scanner.
