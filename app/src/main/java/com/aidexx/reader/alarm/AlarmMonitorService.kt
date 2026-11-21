@@ -114,6 +114,9 @@ class AlarmMonitorService : Service() {
     private var historyRetryJob: Job? =
         null
 
+    private var ringKeepAliveJob: Job? =
+        null
+
     @Volatile
     private var lastReadingAtMs: Long =
         0L
@@ -181,6 +184,30 @@ class AlarmMonitorService : Service() {
                 registerOnSharedPreferenceChangeListener(
                     ringPrefsListener
                 )
+            }
+
+        /*
+         * Re-publish the last known reading every 30s. If the BLE advertiser
+         * is silently killed by the OS (or a stop/start race), this restarts it
+         * well before the ring's 90-second stale threshold.
+         */
+        ringKeepAliveJob =
+            serviceScope.launch {
+                while (isActive) {
+                    delay(RING_KEEP_ALIVE_MS)
+                    val last =
+                        lastRingReading
+                    if (
+                        last != null &&
+                        selectedSerial.isNotBlank()
+                    ) {
+                        publishToRing(
+                            last,
+                            force =
+                                true
+                        )
+                    }
+                }
             }
 
         historyBackfill =
@@ -2019,6 +2046,7 @@ class AlarmMonitorService : Service() {
         backfillStateJob?.cancel()
         liveGattStateJob?.cancel()
         historyRetryJob?.cancel()
+        ringKeepAliveJob?.cancel()
 
         serviceScope.cancel()
         historyDb.close()
@@ -2045,6 +2073,9 @@ class AlarmMonitorService : Service() {
             "com.aidexx.reader.action.FORCE_HISTORY_RECOVERY"
 
         private const val DISCONNECT_CHECK_MS =
+            30_000L
+
+        private const val RING_KEEP_ALIVE_MS =
             30_000L
 
         private const val WATCHDOG_INTERVAL_MS =
