@@ -12,8 +12,8 @@ android {
         applicationId = "com.aidexx.reader"
         minSdk = 26
         targetSdk = 36
-        versionCode = 124
-        versionName = "0.1.60.45"
+        versionCode = 125
+        versionName = "0.1.60.46"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

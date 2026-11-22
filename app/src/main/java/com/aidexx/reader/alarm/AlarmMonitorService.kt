@@ -54,6 +54,9 @@ class AlarmMonitorService : Service() {
         AidexReading? =
         null
 
+    private val ringPublishLock =
+        Any()
+
     private val ringPrefsListener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == "glucoring_enabled") {
@@ -1937,38 +1940,29 @@ class AlarmMonitorService : Service() {
         reading: AidexReading,
         force: Boolean = false
     ) {
-        val last =
-            lastRingReading
+        synchronized(ringPublishLock) {
+            val last =
+                lastRingReading
 
-        /*
-         * The scanner re-emits its sensor list on every RSSI change, not just
-         * on a new sensor minute. Skip re-publishing the same reading (to avoid
-         * churning the BLE advertiser with redundant stop/start cycles) and
-         * skip older readings so a stalled passive scanner never overwrites a
-         * fresher F003 live reading.
-         */
-        if (
-            !force &&
-            last != null &&
-            (
-                reading.sensorMinute <
-                    last.sensorMinute ||
-                (
-                    reading.sensorMinute ==
-                        last.sensorMinute &&
-                    reading.glucoseMgDl ==
-                        last.glucoseMgDl
+            /*
+             * Serialize publishes and only ever send a strictly newer sensor
+             * minute. The F003 live stream can deliver a burst of out-of-order
+             * readings; without this the ring bounces between old minutes.
+             */
+            if (
+                !force &&
+                last != null &&
+                reading.sensorMinute <=
+                    last.sensorMinute
+            ) {
+                return
+            }
+
+            val prefs =
+                getSharedPreferences(
+                    APP_PREFS,
+                    Context.MODE_PRIVATE
                 )
-            )
-        ) {
-            return
-        }
-
-        val prefs =
-            getSharedPreferences(
-                APP_PREFS,
-                Context.MODE_PRIVATE
-            )
 
         if (
             !prefs.getBoolean(
@@ -2051,8 +2045,9 @@ class AlarmMonitorService : Service() {
                 highMgDl
         )
 
-        lastRingReading =
-            reading
+            lastRingReading =
+                reading
+        }
     }
 
     override fun onDestroy() {
