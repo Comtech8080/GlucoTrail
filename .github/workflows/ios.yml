@@ -1,0 +1,39 @@
+name: iOS Phase 1 validation
+on:
+  pull_request:
+    paths: ['ios/**', 'codemagic.yaml', '.github/workflows/ios.yml']
+  push:
+    branches: [main]
+    paths: ['ios/**', 'codemagic.yaml', '.github/workflows/ios.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test protocol, persistence and simulated sensor connections
+        working-directory: ios
+        run: swift test
+      - name: Install XcodeGen
+        run: brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+      - name: Generate native Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build unsigned Simulator and iPhone applications
+        run: bash ios/scripts/build-unsigned.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GlucoTrail-iOS-Unsigned
+          path: |
+            ios/GlucoTrail-Simulator.zip
+            ios/GlucoTrail-iPhone-Unsigned.zip
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: GlucoTrail-iOS-Build-Results
+          path: ios/build/*.xcresult
+          retention-days: 14

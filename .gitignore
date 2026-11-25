@@ -13,3 +13,7 @@ local.properties
 __pycache__/
 dist/
 *.log
+ios/.build/
+ios/.swiftpm/
+ios/*.xcodeproj/
+ios/*.zip

@@ -1,0 +1,30 @@
+workflows:
+  ios-phase1-unsigned:
+    name: GlucoTrail iOS Phase 1 unsigned validation
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      xcode: latest
+    scripts:
+      - name: Test protocol, identity persistence and simulated connections
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR/ios"
+          swift test
+      - name: Generate native Xcode project
+        script: |
+          set -eu
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          cd "$CM_BUILD_DIR/ios"
+          xcodegen generate
+      - name: Build unsigned Simulator and iPhone applications
+        script: |
+          set -eu
+          cd "$CM_BUILD_DIR"
+          bash ios/scripts/build-unsigned.sh
+    artifacts:
+      - ios/GlucoTrail-Simulator.zip
+      - ios/GlucoTrail-iPhone-Unsigned.zip
+      - ios/build/*.xcresult
+# Intentionally manual: connect this repository in Codemagic and select this
+# workflow. No paid plan, signing credentials, TestFlight upload or billing enabled.
